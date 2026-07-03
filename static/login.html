@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Вход · FH Dashboard</title>
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body class="login-body">
+<div class="login-card">
+  <div class="login-logo">FH</div>
+  <h1>Freelancehunt</h1>
+  <p class="login-sub">Панель управления профилем</p>
+  <form id="loginForm">
+    <label>
+      <span>Логин</span>
+      <input id="username" type="text" autocomplete="username" required autofocus>
+    </label>
+    <label>
+      <span>Пароль</span>
+      <input id="password" type="password" autocomplete="current-password" required>
+    </label>
+    <button type="submit" class="btn btn-full">Войти</button>
+    <div id="loginError" class="login-error hidden"></div>
+  </form>
+</div>
+<script>
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const err = document.getElementById("loginError");
+  err.classList.add("hidden");
+  const res = await fetch("/api/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: document.getElementById("username").value,
+      password: document.getElementById("password").value,
+    }),
+  });
+  if (res.ok) {
+    window.location.href = "/";
+  } else {
+    const body = await res.json().catch(() => ({}));
+    err.textContent = body.detail || "Ошибка входа";
+    err.classList.remove("hidden");
+  }
+});
+</script>
+</body>
+</html>

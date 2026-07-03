@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FH Dashboard</title>
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<div class="app">
+  <!-- Mobile top bar -->
+  <header class="topbar">
+    <button id="menuToggle" class="icon-btn" aria-label="Меню">☰</button>
+    <span class="topbar-title" id="topbarTitle">Дашборд</span>
+    <img id="topbarAvatar" class="avatar avatar-sm" src="" alt="">
+  </header>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <img id="avatar" class="avatar" src="" alt="">
+      <div class="brand-info">
+        <div id="profileName" class="brand-name">—</div>
+        <div id="profileStatus" class="brand-status">—</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <button class="nav-item active" data-tab="dashboard"><span class="nav-ico">◈</span>Дашборд</button>
+      <button class="nav-item" data-tab="projects"><span class="nav-ico">◆</span>Проекты</button>
+      <button class="nav-item" data-tab="bids"><span class="nav-ico">↗</span>Мои ставки</button>
+      <button class="nav-item" data-tab="income"><span class="nav-ico">₴</span>Доходы</button>
+      <button class="nav-item" data-tab="threads"><span class="nav-ico">✉</span>Переписка<span id="threadsBadge" class="badge hidden">0</span></button>
+      <button class="nav-item" data-tab="feed"><span class="nav-ico">◉</span>Уведомления<span id="feedBadge" class="badge hidden">0</span></button>
+      <button class="nav-item" data-tab="portfolio"><span class="nav-ico">▦</span>Портфолио</button>
+      <button class="nav-item" data-tab="profile"><span class="nav-ico">◐</span>Профиль</button>
+    </nav>
+    <div class="sidebar-footer">
+      <button id="logoutBtn" class="nav-item nav-logout"><span class="nav-ico">⏻</span>Выйти</button>
+    </div>
+  </aside>
+
+  <div class="scrim" id="scrim"></div>
+
+  <main class="content">
+    <!-- Dashboard -->
+    <section id="tab-dashboard" class="tab active">
+      <h1>Дашборд</h1>
+      <div class="stats-grid" id="statsGrid"></div>
+      <div class="card">
+        <h2>О себе</h2>
+        <p id="profileCv" class="cv-text"></p>
+      </div>
+    </section>
+
+    <!-- Projects -->
+    <section id="tab-projects" class="tab">
+      <h1>Проекты</h1>
+      <p class="note">Freelancehunt закрыл подачу ставок через API (v2 deprecated). Кнопка открывает проект на сайте, где ставишь ставку.</p>
+      <div class="toolbar">
+        <input id="searchFilter" type="text" placeholder="Поиск по названию…">
+        <input id="budgetFilter" type="number" placeholder="Мин. бюджет">
+        <button id="clearFilters" class="btn-ghost">Сброс</button>
+      </div>
+      <div id="projectsList" class="list"></div>
+      <div class="pager">
+        <button id="projectsPrev" class="btn-ghost">‹</button>
+        <span>Стр. <b id="projectsPage">1</b></span>
+        <button id="projectsNext" class="btn-ghost">›</button>
+      </div>
+    </section>
+
+    <!-- Bids -->
+    <section id="tab-bids" class="tab">
+      <h1>Мои ставки</h1>
+      <div id="bidsList" class="list"></div>
+    </section>
+
+    <!-- Income -->
+    <section id="tab-income" class="tab">
+      <h1>Доходы</h1>
+      <div class="income-summary" id="incomeSummary"></div>
+      <div class="card income-chart-card">
+        <div class="tab-header-row"><h2>Динамика по месяцам</h2><span id="incomeHint" class="chart-hint"></span></div>
+        <div class="income-chart" id="incomeChart"></div>
+      </div>
+      <div class="card">
+        <div class="tab-header-row">
+          <h2 id="incomeProjectsTitle">Завершённые проекты</h2>
+          <div class="month-chips" id="monthChips"></div>
+        </div>
+        <p class="note">💰 Доплаты из чата ловятся автоматически (сообщения «внёс доплату… сумма») и уже в графике. Поле ниже — для ручных корректировок по конкретному проекту.</p>
+        <div id="incomeProjects" class="income-list"></div>
+      </div>
+    </section>
+
+    <!-- Threads -->
+    <section id="tab-threads" class="tab">
+      <h1 class="threads-h1">Переписка</h1>
+      <div class="threads-layout" id="threadsLayout">
+        <div class="threads-nav" id="threadsNav">
+          <div class="nav-panel-header" id="navHeader">
+            <span id="navTitle">Заказчики</span>
+            <input id="clientSearch" class="nav-search" type="text" placeholder="Поиск…">
+          </div>
+          <div id="navList" class="nav-list"></div>
+        </div>
+        <div id="threadView" class="thread-view">
+          <div class="empty-state">Выбери заказчика слева</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Feed -->
+    <section id="tab-feed" class="tab">
+      <div class="tab-header-row">
+        <h1>Уведомления</h1>
+        <button id="markReadBtn" class="btn-ghost">Прочитать всё</button>
+      </div>
+      <div id="feedList" class="list"></div>
+    </section>
+
+    <!-- Portfolio -->
+    <section id="tab-portfolio" class="tab">
+      <div class="tab-header-row">
+        <h1>Портфолио</h1>
+        <a class="btn-ghost" href="https://freelancehunt.com/my/portfolio" target="_blank" rel="noopener">Редактировать на сайте ↗</a>
+      </div>
+      <p class="note">API даёт портфолио только на просмотр. Добавление и правки — на freelancehunt.com (кнопка справа).</p>
+      <div id="portfolioGrid" class="portfolio-grid"></div>
+    </section>
+
+    <!-- Profile -->
+    <section id="tab-profile" class="tab">
+      <div class="tab-header-row">
+        <h1>Профиль</h1>
+        <a class="btn" href="https://freelancehunt.com/my/freelancer" target="_blank" rel="noopener">Редактировать ↗</a>
+      </div>
+      <p class="note">Freelancehunt не даёт менять профиль через API (только на сайте). Здесь — полный просмотр; кнопка выше открывает редактор на сайте.</p>
+      <div id="profileView"></div>
+    </section>
+  </main>
+</div>
+
+<!-- Portfolio lightbox -->
+<div id="pfModal" class="modal hidden">
+  <div class="modal-box pf-modal-box">
+    <img id="pfImage" class="pf-full-img" src="" alt="">
+    <h2 id="pfTitle"></h2>
+    <div id="pfSkill" class="pill"></div>
+    <p id="pfComment" class="cv-text"></p>
+    <div class="modal-actions">
+      <a id="pfLink" class="btn-ghost hidden" target="_blank" rel="noopener">Открыть ссылку</a>
+      <button id="pfClose" class="btn">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="/assets/app.js"></script>
+</body>
+</html>
