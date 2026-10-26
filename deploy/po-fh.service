@@ -7,6 +7,7 @@ Wants=network-online.target
 User=pofh
 WorkingDirectory=/opt/po-fh/app
 EnvironmentFile=/opt/po-fh/.env
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/po-fh/browsers
 ExecStart=/opt/po-fh/venv/bin/python -m po.bot
 Restart=always
 RestartSec=5

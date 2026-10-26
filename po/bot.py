@@ -2,6 +2,8 @@
 import asyncio
 import html
 import logging
+from pathlib import Path
+from typing import Optional
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.filters import Command, CommandStart
@@ -9,11 +11,12 @@ from aiogram.types import CallbackQuery, LinkPreviewOptions, Message
 
 from freelancehunt.client import FreelancehuntClient, FreelancehuntError
 
-from . import ui
+from . import competitors, ui
 from .agent import Po
 from .catalog import best_matches
 from .config import Settings
-from .llm import OpenAILLM
+from .llm import Meter, OpenAILLM
+from .matcher import Matcher
 from .projects import Project, card, parse_project
 from .service import Service
 from .state import State
@@ -24,12 +27,23 @@ NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
 
 class App:
-    def __init__(self, settings: Settings, bot: Bot, service: Service, po: Po, state: State):
+    def __init__(
+        self,
+        settings: Settings,
+        bot: Bot,
+        service: Service,
+        po: Po,
+        state: State,
+        matcher: Optional[Matcher] = None,
+        meter: Optional[Meter] = None,
+    ):
         self.s = settings
         self.bot = bot
         self.service = service
         self.po = po
         self.state = state
+        self.matcher = matcher
+        self.meter = meter or Meter(state)
         self.last_bid: dict[int, str] = {}
         self.busy: set[int] = set()
 
@@ -41,16 +55,29 @@ class App:
         owner = self.s.owner_id or self.state["owner_chat_id"]
         return owner is not None and user_id == owner
 
+    async def find_match(self, p: Project, cases: list) -> tuple:
+        if self.matcher:
+            try:
+                with self.meter.measure("cards"):
+                    found = await self.matcher.best(p, cases)
+                return found if found else (None, "")
+            except Exception as e:  # noqa: BLE001
+                log.warning("точный подбор не сработал, беру по словам: %s", e)
+        matches = best_matches(p.search_text, cases, n=1)
+        return (matches[0], "") if matches else (None, "")
+
     async def send_project(self, p: Project) -> None:
-        match, repeat = None, False
+        match, why, repeat = None, "", False
         try:
-            matches = best_matches(p.search_text, await self.service.cases(), n=1)
-            match = matches[0] if matches else None
+            cases = await self.service.cases()
+            match, why = await self.find_match(p, cases)
             repeat = p.employer_id in await self.service.past_clients()
         except FreelancehuntError as e:
             log.warning("кейсы недоступны: %s", e)
+        self.state.save()
         await self.bot.send_message(
-            self.chat, card(p, match, repeat), parse_mode="HTML", reply_markup=ui.project_kb(p), link_preview_options=NO_PREVIEW
+            self.chat, card(p, match, repeat, why), parse_mode="HTML", reply_markup=ui.project_kb(p),
+            link_preview_options=NO_PREVIEW,
         )
 
     async def make_bid(self, cq: CallbackQuery, pid: int, again: bool) -> None:
@@ -65,9 +92,20 @@ class App:
             cases = await self.service.cases()
             facts = await self.service.facts()
             repeat = project.employer_id in await self.service.past_clients()
-            draft = await self.po.write_bid(
-                project, cases, facts, previous=self.last_bid.get(pid) if again else None, repeat=repeat
-            )
+            login = (await self.service.profile()).get("attributes", {}).get("login", "")
+            rivals = await competitors.load(project.url, login)
+            with self.meter.measure("bids") as spent:
+                draft = await self.po.write_bid(
+                    project,
+                    cases,
+                    facts,
+                    previous=self.last_bid.get(pid) if again else None,
+                    repeat=repeat,
+                    rivals=competitors.render_for_prompt(rivals),
+                    rivals_summary=competitors.summary(rivals, project.bid_count) if rivals else "",
+                )
+            draft.cost = sum(spent)
+            self.state.save()
             self.last_bid[pid] = draft.text
             await cq.message.reply(
                 ui.bid_message(project, draft), parse_mode="HTML", reply_markup=ui.bid_kb(project), link_preview_options=NO_PREVIEW
@@ -189,7 +227,9 @@ def build_router(app: App) -> Router:
         reviews = sum(1 for c in cases if c.kind == "review")
         stats = await app.service.bid_stats(30)
         await m.answer(
-            ui.profile_message(prof, len(cases), reviews, app.state["min_budget"], app.state["paused"], stats),
+            ui.profile_message(
+                prof, len(cases), reviews, app.state["min_budget"], app.state["paused"], stats, app.meter.summary(30)
+            ),
             parse_mode="HTML",
         )
 
@@ -235,7 +275,10 @@ async def main() -> None:
     if s.owner_id and state["owner_chat_id"] is None:
         state["owner_chat_id"] = s.owner_id
     bot = Bot(s.telegram_token)
-    app = App(s, bot, Service(FreelancehuntClient(s.fh_token), state, s.catalog_ttl), Po(OpenAILLM(s.openai_key, s.model)), state)
+    meter = Meter(state, s.prices)
+    llm = OpenAILLM(s.openai_key, s.model, meter)
+    matcher = Matcher(llm, str(Path(s.state_path).with_name("index.json")))
+    app = App(s, bot, Service(FreelancehuntClient(s.fh_token), state, s.catalog_ttl), Po(llm), state, matcher, meter)
     dp = Dispatcher()
     dp.include_router(build_router(app))
     asyncio.create_task(app.loop(s.poll_inbox, app.check_inbox))

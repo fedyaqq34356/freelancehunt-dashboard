@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -16,6 +16,7 @@ class Settings:
     poll_inbox: int = 30
     poll_projects: int = 90
     catalog_ttl: int = 6 * 3600
+    prices: dict = field(default_factory=dict)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -33,4 +34,9 @@ class Settings:
             state_path=os.getenv("STATE_PATH", cls.state_path),
             poll_inbox=int(os.getenv("POLL_INBOX_SECONDS", cls.poll_inbox)),
             poll_projects=int(os.getenv("POLL_PROJECTS_SECONDS", cls.poll_projects)),
+            prices={
+                k: float(os.environ[f"PRICE_{k.upper()}"])
+                for k in ("in", "cached", "out", "embed")
+                if os.getenv(f"PRICE_{k.upper()}")
+            },
         )

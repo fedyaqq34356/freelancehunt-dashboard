@@ -7,7 +7,7 @@ from . import humanizer
 from .catalog import Case, render_for_prompt
 from .llm import LLM
 from .projects import Project
-from .text import clip
+from .text import clip, stems
 
 PLAN_VERBS = re.compile(
     r"\b(сделаю|проверю|подключу|настрою|добавлю|реализую|разработаю|сверю|посмотрю|напишу|интегрирую|доработаю|"
@@ -36,9 +36,9 @@ BID_RULES = """Ты По. Пишешь ставку на Freelancehunt от пе
 
 Структура (держи её, это его живой стиль, который выигрывал):
 1. «Имя, добрый день.» (или «Добрий день» на украинском). Если заказчик уже работал с ним, сразу второй фразой: «Уже работали с вами» и что делали.
-2. 1-3 предложения по сути ЕГО задачи: как будет устроено решение именно под это ТЗ, с 1-2 конкретными деталями из описания (роли, источники данных, интеграции, особые случаи). Это не план этапов, а короткое «как это будет работать», чтобы было видно, что он понял задачу лучше других.
-3. Похожая готовая система из каталога: что в ней уже реализовано и почему это ускоряет его задачу. Если подходящая работа есть в портфолио ([p...]), можно сказать «в прикреплённом проекте уже реализовано ...». Если по похожему проекту есть сильный отзыв, одна короткая фраза о нём.
-4. Строки «Срок», «Бюджет» и этапы добавятся к ставке автоматически из полей price, days и stages. В поле bid их не пиши. Если задача маленькая и реально делается за день, поставь start_today=true.
+2. 1-3 предложения, которых НЕТ в ТЗ. Не пересказывай ТЗ: заказчик знает свою задачу, а пересказ делают почти все конкуренты (часто нейросетью). Каждое предложение добавляет одно из: риск или подводный камень, о котором заказчик не подумал; как результат будет выглядеть для него на практике (запуск двойным кликом, файл с датой в названии, кнопка в боте); решение спорного места задачи. Пример хорошего хода: «Найризикованіше тут не парсинг, а зведення дублів: один артикул у різних постачальників пишеться по-різному».
+3. Похожий проект называй явно, по названию в кавычках, и это должен быть первый кейс в cases (его фрилансер приложит к ставке). Если по нему есть отзыв, процитируй коротко: «За схожий проєкт "Назва" замовник написав: "..."». Если отзыва нет: «У прикріпленому проєкті "Назва" вже працює ...». Отзыв переводи на язык проекта.
+4. Строки «Срок», «Бюджет» и этапы добавятся к ставке автоматически из полей price, days, minutes и stages. В поле bid их не пиши. Если задача маленькая и реально делается за день, поставь start_today=true.
 5. Поле closing: «Пишите, обсудим детали.» (на языке проекта) или, если в ТЗ не хватает ключевой детали, один короткий вопрос по ней. В поле bid этот вопрос не повторяй.
 
 Правила:
@@ -49,12 +49,23 @@ BID_RULES = """Ты По. Пишешь ставку на Freelancehunt от пе
 - Ref кейсов ([r...], [p...]) в текст не вставляй. Слово «каталог» не используй.
 - Без markdown, эмодзи, восклицаний и длинных тире.
 
-Как выбирать кейсы: по сути задачи (что система делает, с какими данными и сервисами работает). Кейсы с отзывом ([r...]) ценнее при равной похожести. 1-3 кейса, только ref из каталога.
+Как выбирать кейсы: по сути задачи (что система делает, с какими данными и сервисами работает), а не по теме. Первый кейс в cases самый точный по задаче, его фрилансер приложит к ставке. Кейсы с отзывом ([r...]) ценнее при равной похожести. 1-3 кейса, только ref из каталога.
+
+Ставки конкурентов (если даны в блоке СТАВКИ КОНКУРЕНТОВ):
+- Прочитай их и найди, что пишут все (обычно пересказ ТЗ, «маю досвід», одинаковые сроки). Этого не повторяй.
+- Найди, чего ни у кого нет, и построй ставку на этом: риск, который никто не назвал, готовая похожая система, более короткий реальный срок, наглядный результат.
+- Чужие идеи и формулировки не копируй: если деталь (риск, приём, фича) уже есть хоть у одного конкурента, она не твоё отличие, не используй её. Слабые и пустые ставки игнорируй.
+- Срок не длиннее самого короткого у содержательных конкурентов, если задача реально делается так быстро. Для мелких задач лучше часы (minutes).
+- rivals_note: одна-две фразы фрилансеру, что пишут конкуренты и чем его ставка отличается.
+
+Скрытие: hide=true, если в ставке есть своё решение или идея, которую конкуренты могут скопировать (у фрилансера Plus, ставку можно скрыть). hide_reason: коротко почему.
 
 Цена и срок:
 - Цена в валюте проекта. Если бюджет указан, ставь ровно бюджет: все его выигранные ставки были ровно по бюджету, ставки ниже бюджета не выиграли ни разу. Скидку не предлагай, готовая основа значит «быстрее и надёжнее», а не «дешевле».
 - Если бюджета нет, цену бери по бюджетам его похожих проектов из каталога (например, AI-агенты у него стоили 11 800-19 000 грн, PIM 27 000 грн за этап, боты обычно 1 000-5 000 грн), а не по рыночным оценкам больших студий.
-- Он работает быстро с современными инструментами разработки, поэтому сроки короче рыночных: ориентируйся на сроки его похожих проектов, обычно от 1 до 10 дней. Об инструментах заказчику не пиши.
+- Он работает быстро с современными инструментами разработки, поэтому сроки короче рыночных. Об инструментах заказчику не пиши.
+- Мелкие задачи (скрипт, правка, небольшой бот, настройка) оценивай в минутах или часах: поле minutes (30, 60, 120, 240), days тогда null. Если реально делается за день или быстрее, minutes обязательно, и start_today=true. Срок короче, чем у конкурентов, часто решает выбор.
+- Задачи крупнее: days, обычно 1-10 дней, minutes null.
 - Если итоговая цена больше 27 000 грн, раздели работу на 2 этапа. Этап 1: основная техническая часть (подключения, данные, логика), примерно 55% суммы. Этап 2: доводка (удобство, оформление, дополнительные отчёты и сценарии), остальное. В поле stages два этапа: title коротко и на языке проекта (что входит, до 60 знаков), price, days. price = сумма этапов, days = сумма дней. Если цена до 27 000 грн, stages пустой.
 - Сильный отзыв по похожему проекту обязательно процитируй коротко, переведя на язык проекта. Это самый сильный аргумент.
 note: подсказка фрилансеру, не заказчику: риск, что уточнить, стоит ли браться.
@@ -96,6 +107,7 @@ BID_SCHEMA = {
         "start_today": {"type": "boolean"},
         "price": {"type": ["integer", "null"]},
         "days": {"type": ["integer", "null"]},
+        "minutes": {"type": ["integer", "null"]},
         "stages": {
             "type": "array",
             "items": {
@@ -106,8 +118,14 @@ BID_SCHEMA = {
             },
         },
         "note": {"type": "string"},
+        "hide": {"type": "boolean"},
+        "hide_reason": {"type": "string"},
+        "rivals_note": {"type": "string"},
     },
-    "required": ["fit", "cases", "bid", "closing", "start_today", "price", "days", "stages", "note"],
+    "required": [
+        "fit", "cases", "bid", "closing", "start_today", "price", "days", "minutes", "stages", "note",
+        "hide", "hide_reason", "rivals_note",
+    ],
 }
 
 STAGE_LIMIT_UAH = 27000
@@ -138,6 +156,12 @@ class BidDraft:
     currency: str = ""
     note: str = ""
     stages: list[dict] = field(default_factory=list)
+    minutes: Optional[int] = None
+    hide: bool = False
+    hide_reason: str = ""
+    rivals_note: str = ""
+    rivals_summary: str = ""
+    cost: float = 0.0
 
 
 def render_project(p: Project) -> str:
@@ -154,9 +178,22 @@ def render_project(p: Project) -> str:
     )
 
 
-def review_bid(text: str, raw: Optional[dict] = None, currency: str = "UAH") -> list[str]:
-    """Проверка ставки без модели: план работ, общие слова, длина, этапы для крупных сумм."""
+def restated(text: str, project_text: str) -> int:
+    """Сколько предложений ставки почти целиком состоят из слов ТЗ."""
+    source = stems(project_text)
+    count = 0
+    for sentence in re.split(r"(?<=[.?!])\s+", text):
+        st = stems(sentence)
+        if len(st) >= 5 and len(st & source) / len(st) >= 0.6:
+            count += 1
+    return count
+
+
+def review_bid(text: str, raw: Optional[dict] = None, currency: str = "UAH", project_text: str = "") -> list[str]:
+    """Проверка ставки без модели: пересказ ТЗ, план работ, общие слова, длина, этапы для крупных сумм."""
     issues = []
+    if project_text and restated(text, project_text) >= 2:
+        issues.append("предложения пересказывают ТЗ, замени их тем, чего в ТЗ нет: риск, наглядный результат, готовая система")
     raw = raw or {}
     price = raw.get("price") or sum(st.get("price", 0) for st in raw.get("stages") or [])
     if currency.upper() in ("UAH", "") and price and price > STAGE_LIMIT_UAH and len(raw.get("stages") or []) < 2:
@@ -179,12 +216,23 @@ def is_ukrainian(text: str) -> bool:
     return len(re.findall(r"[іїєґ]", text.lower())) >= 3
 
 
-def plural_days(n: int, uk: bool) -> str:
+def _plural(n: int, one: str, few: str, many: str) -> str:
     if n % 10 == 1 and n % 100 != 11:
-        return "день"
+        return one
     if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
-        return "дні" if uk else "дня"
-    return "днів" if uk else "дней"
+        return few
+    return many
+
+
+def plural_days(n: int, uk: bool) -> str:
+    return _plural(n, "день", "дні", "днів") if uk else _plural(n, "день", "дня", "дней")
+
+
+def duration(minutes: int, uk: bool) -> str:
+    if minutes < 60:
+        return f"{minutes} " + (_plural(minutes, "хвилина", "хвилини", "хвилин") if uk else _plural(minutes, "минута", "минуты", "минут"))
+    hours = round(minutes / 60)
+    return f"{hours} " + (_plural(hours, "година", "години", "годин") if uk else _plural(hours, "час", "часа", "часов"))
 
 
 def money(n: int, currency: str) -> str:
@@ -205,7 +253,9 @@ def assemble(body: str, raw: dict, project: Project, closing: str) -> str:
             word = "Етап" if uk else "Этап"
             lines.append(f"{word} {i} ({st['title'].strip().rstrip('.')}): {money(st['price'], cur)}, {st['days']} {plural_days(st['days'], uk)}")
     else:
-        if raw.get("days"):
+        if raw.get("minutes"):
+            lines.append(f"{'Термін' if uk else 'Срок'}: {duration(raw['minutes'], uk)}")
+        elif raw.get("days"):
             lines.append(f"{'Термін' if uk else 'Срок'}: {raw['days']} {plural_days(raw['days'], uk)}")
         if raw.get("price"):
             lines.append(f"{'Бюджет'}: {money(raw['price'], cur)}")
@@ -220,7 +270,14 @@ class Po:
         self.llm = llm
 
     async def write_bid(
-        self, project: Project, cases: list[Case], facts: str = "", previous: Optional[str] = None, repeat: bool = False
+        self,
+        project: Project,
+        cases: list[Case],
+        facts: str = "",
+        previous: Optional[str] = None,
+        repeat: bool = False,
+        rivals: str = "",
+        rivals_summary: str = "",
     ) -> BidDraft:
         catalog = cases[:MAX_CASES_IN_PROMPT]
         past = [c for c in catalog if repeat and c.client_id and c.client_id == project.employer_id]
@@ -232,12 +289,14 @@ class Po:
         prompt += f"\n\nКАТАЛОГ МОИХ РАБОТ\n{render_for_prompt(catalog)}"
         if facts:
             prompt += f"\n\nФАКТЫ ПРОФИЛЯ\n{facts}"
+        if rivals:
+            prompt += f"\n\nСТАВКИ КОНКУРЕНТОВ ({rivals_summary})\n{rivals}"
         if previous:
             prompt += f"\n\nПРЕДЫДУЩИЙ ВАРИАНТ (не повторяй его, напиши по-другому, можно с другими кейсами):\n{previous}"
         raw = await self.llm.json(instructions=BID_RULES, prompt=prompt, schema=BID_SCHEMA, name="bid", effort="medium", max_tokens=4000)
         first = raw
         for _ in range(2):
-            issues = review_bid(raw.get("bid", ""), raw, project.currency)
+            issues = review_bid(raw.get("bid", ""), raw, project.currency, f"{project.name} {project.description}")
             if not issues:
                 break
             fix = f"{prompt}\n\nТВОЙ ЧЕРНОВИК\n{raw.get('bid', '')}\n\nПерепиши ставку. Проблемы: {'; '.join(issues)}."
@@ -264,6 +323,11 @@ class Po:
             currency=project.currency or "UAH",
             note=raw.get("note", ""),
             stages=raw.get("stages") or [],
+            minutes=raw.get("minutes"),
+            hide=bool(raw.get("hide")),
+            hide_reason=raw.get("hide_reason", ""),
+            rivals_note=raw.get("rivals_note", "") if rivals else "",
+            rivals_summary=rivals_summary,
         )
 
     async def humanize(self, text: str) -> str:

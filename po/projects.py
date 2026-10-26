@@ -76,7 +76,7 @@ def is_hot(p: Project) -> bool:
     return p.bid_count <= 20 and p.employer_done >= 3 and any(s in HOT_SKILLS for s in p.skills)
 
 
-def card(p: Project, match: Optional[Case] = None, repeat: bool = False) -> str:
+def card(p: Project, match: Optional[Case] = None, repeat: bool = False, why: str = "") -> str:
     e = html.escape
     marks = ("🔥 " if is_hot(p) else "") + ("🤝 " if repeat else "")
     lines = [f"{marks}<b>{e(p.name)}</b>"]
@@ -93,5 +93,5 @@ def card(p: Project, match: Optional[Case] = None, repeat: bool = False) -> str:
         lines.append(e(clip(p.description, 450)))
     if match:
         lines.append("")
-        lines.append(f"🎯 Похоже на твоё: {e(clip(match.title, 70))}")
+        lines.append(f"🎯 Подходит твой проект «{e(clip(match.title, 70))}»" + (f": {e(clip(why, 90))}" if why else ""))
     return "\n".join(lines)

@@ -1,0 +1,150 @@
+import asyncio
+
+from conftest import FakeLLM, PORTFOLIO, REVIEWS, project_item
+
+from po import competitors, ui
+from po.agent import Po, assemble, duration, restated, review_bid
+from po.catalog import parse_portfolio, parse_reviews
+from po.llm import Meter
+from po.matcher import Matcher
+from po.projects import parse_project
+from po.state import State
+
+
+def bid_article(login, name, rating, amount, days, projects, text, plus=True, hidden=False):
+    body = "Деталі ставки приховані" if hidden else f'<span class="bid-comment"><span class="text-collapse"><span>{text}</span></span></div>'
+    return (
+        f'<article class="widget bid " id="bid-1" data-rating="{rating}" data-hasplus="{1 if plus else 0}" '
+        f'data-amount="{amount}" data-days="{days}"><div class="bid-header">'
+        f'<a href="https://freelancehunt.com/ua/freelancer/{login}.html"><img alt="{name}"></a>'
+        f'<li class="stats-cell"><span class="x">Проєкти</span> <span class="stats-value"><span class="text-desktop-h6">{projects}</span></span></li>'
+        f"</div><div>{body}</article>"
+    )
+
+
+PAGE = (
+    "<html>"
+    + bid_article("me_login", "Я", 8183, 4000, 2, 31, "моя ставка")
+    + bid_article("alice", "Аліса", 1200, 4000, 1, 12, "Найризикованіше тут зведення дублів. " * 8)
+    + bid_article("bob", "Боб", 300, 3500, 3, 0, "Готовий зробити.")
+    + bid_article("carl", "Карл", 1349, 4000, 1, 6, "", hidden=True)
+    + "<p>У списку не показані ставки, приховані замовником</p></html>"
+)
+
+
+RU_ARTICLE = (
+    '<article class="widget bid " data-rating="391" data-hasplus="1" data-amount="4000" data-days="1"><div class="bid-header">'
+    '<a href="https://freelancehunt.com/freelancer/dan.html"><img alt="Дан"></a>'
+    '<li class="stats-cell"><span>Проекты</span> <span class="stats-value"><span class="text-desktop-h6">2</span></span></li></div>'
+    '<div> <div data-translation-entity="bid-1" class=" bid-comment unsafe-links-container formatted-text"> '
+    '<span class="text-collapse wrap-anywhere"> <span>Добрый день.<br><br>Сделаю скрипт.</span> </span></div></article>'
+)
+
+
+def test_competitors_parse_russian_translated_markup():
+    r = competitors.parse(RU_ARTICLE)[0]
+    assert (r.login, r.projects, r.days) == ("dan", 2, 1)
+    assert r.text == "Добрый день.\nСделаю скрипт."
+
+
+def test_competitors_parse_skips_me_and_detects_hidden():
+    rivals = competitors.parse(PAGE, "me_login")
+    assert [r.login for r in rivals] == ["alice", "bob", "carl"]
+    a, b, c = rivals
+    assert (a.rating, a.amount, a.days, a.projects, a.plus) == (1200, 4000, 1, 12, True)
+    assert a.text.startswith("Найризикованіше")
+    assert c.hidden and c.text == ""
+    assert competitors.hidden_note(PAGE)
+
+
+def test_competitors_prompt_keeps_only_meaningful_and_summary():
+    rivals = competitors.parse(PAGE, "me_login")
+    text = competitors.render_for_prompt(rivals)
+    assert "Найризикованіше" in text and "Готовий зробити" not in text
+    s = competitors.summary(rivals, 64)
+    assert s.startswith("видно 3 из 64") and "цены 3500-4000" in s and "содержательных 1" in s
+
+
+def test_competitors_load_survives_errors(monkeypatch):
+    async def boom(url, timeout_ms=30000):
+        raise RuntimeError("no browser")
+
+    monkeypatch.setattr(competitors, "fetch_html", boom)
+    assert asyncio.run(competitors.load("http://x")) == []
+
+
+def test_meter_records_and_summarizes(tmp_path):
+    st = State(str(tmp_path / "s.json"))
+    m = Meter(st, {"in": 1.0, "cached": 0.1, "out": 2.0, "embed": 0.5})
+    with m.measure("bids") as spent:
+        m.record(1_000_000, 0, 500_000)
+        m.record(embed=1_000_000)
+    assert abs(sum(spent) - 2.5) < 1e-9
+    with m.measure("cards"):
+        m.record(1_000_000, 1_000_000, 0)
+    s = m.summary(30)
+    assert s["bids"] == 1 and s["cards"] == 1
+    assert abs(s["usd"] - 2.6) < 1e-9 and abs(s["bids_usd"] - 2.5) < 1e-9 and abs(s["cards_usd"] - 0.1) < 1e-9
+    lines = ui.usage_lines(s, 20)
+    assert "$20 хватит примерно на 8 ставок или 200 карточек" in lines[2]
+
+
+def test_duration_and_minutes_terms():
+    assert duration(30, True) == "30 хвилин" and duration(120, True) == "2 години" and duration(60, False) == "1 час"
+    p = parse_project(project_item())
+    t = assemble("Тело.", {"price": 1000, "minutes": 30, "days": None}, p, "Пишите.")
+    assert "Срок: 30 минут" in t and "Бюджет: 1 000 грн" in t
+
+
+def test_restated_detects_tz_paraphrase():
+    tz = "Кладу прайси в папку, скрипт робить один ексель з артикулом, ціною в гривнях за курсом НБУ або вручну заданим курсом, найдешевший постачальник, інші постачальники в окремій колонці."
+    para = "Долари перераховуватиму за курсом НБУ або вручну заданим курсом. Найдешевший постачальник по артикулу, інші постачальники з ціною в окремій колонці."
+    fresh = "Найризикованіше тут зведення дублів: один артикул пишеться по-різному. Без нормалізації той самий товар пройде як два різні."
+    assert restated(para, tz) == 2 and restated(fresh, tz) == 0
+    assert any("пересказывают ТЗ" in i for i in review_bid(para, {}, "UAH", tz))
+
+
+def test_write_bid_gets_rivals_and_new_fields():
+    llm = FakeLLM()
+    llm.bid = {**llm.bid, "minutes": 60, "hide": True, "hide_reason": "своя идея", "rivals_note": "все пересказывают ТЗ"}
+    cs = parse_reviews(REVIEWS) + parse_portfolio(PORTFOLIO)
+    p = parse_project(project_item())
+    d = asyncio.run(Po(llm).write_bid(p, cs, rivals="1. текст конкурента", rivals_summary="видно 3 из 10"))
+    assert "СТАВКИ КОНКУРЕНТОВ (видно 3 из 10)" in llm.calls[0]["prompt"]
+    assert d.hide and d.rivals_note == "все пересказывают ТЗ" and d.minutes == 60
+    d.cost = 0.0042
+    msg = ui.bid_message(p, d)
+    assert "📎 <b>Приложи:</b>" in msg and "🙈" in msg and "👀 Конкуренты: видно 3 из 10" in msg
+    assert "Стоила $0.0042" in msg and "⏱ 1 ч" in msg
+
+
+class EmbedLLM(FakeLLM):
+    def __init__(self, pick="p1"):
+        super().__init__()
+        self.pick = pick
+        self.embeds = 0
+
+    async def embed(self, texts):
+        self.embeds += len(texts)
+        return [[1.0, 0.0] if ("прайс" in t.lower() or "цен" in t.lower()) else [0.0, 1.0] for t in texts]
+
+    async def json(self, **kw):
+        self.calls.append(kw)
+        if kw["name"] == "summaries":
+            return {"items": [{"ref": "[p1]", "task": "сводит прайсы поставщиков"}]}
+        return {"ref": self.pick, "why": "та же задача"}
+
+
+def test_matcher_caches_index_and_picks(tmp_path):
+    cs = parse_portfolio(PORTFOLIO)
+    llm = EmbedLLM()
+    m = Matcher(llm, str(tmp_path / "index.json"))
+    p = parse_project(project_item(name="Звести прайси постачальників", desc="ціни у різних форматах"))
+    case, why = asyncio.run(m.best(p, cs))
+    assert case.ref == "p1" and why == "та же задача"
+    assert m.task(cs[0]) == f"{cs[0].title}. сводит прайсы поставщиков"
+    first_embeds = llm.embeds
+    m2 = Matcher(llm, str(tmp_path / "index.json"))
+    asyncio.run(m2.best(p, cs))
+    assert llm.embeds == first_embeds + 1
+    assert asyncio.run(Matcher(EmbedLLM("none"), str(tmp_path / "index.json")).best(p, cs)) is None

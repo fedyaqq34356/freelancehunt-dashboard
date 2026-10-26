@@ -44,7 +44,7 @@ def test_card_escapes_html_and_shows_match():
     p = parse_project(project_item(name="Бот <b>A & B</b>", desc="x < y " * 200))
     text = card(p, cases()[0])
     assert "<b>Бот A &amp; B</b>" in text and "x &lt; y" in text
-    assert "Похоже на твоё" in text
+    assert "Подходит твой проект «" in text
     assert len(text) < 1000
 
 
