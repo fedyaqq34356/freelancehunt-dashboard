@@ -3,7 +3,7 @@ import asyncio
 from conftest import FakeLLM, PORTFOLIO, REVIEWS, project_item
 
 from po import competitors, ui
-from po.agent import Po, assemble, duration, restated, review_bid
+from po.agent import Po, assemble, duration, opening, restated, review_bid
 from po.catalog import parse_portfolio, parse_reviews
 from po.llm import Meter
 from po.matcher import Matcher
@@ -113,7 +113,16 @@ def test_restated_detects_tz_paraphrase():
     para = "Долари перераховуватиму за курсом НБУ або вручну заданим курсом. Найдешевший постачальник по артикулу, інші постачальники з ціною в окремій колонці."
     fresh = "Найризикованіше тут зведення дублів: один артикул пишеться по-різному. Без нормалізації той самий товар пройде як два різні."
     assert restated(para, tz) == 2 and restated(fresh, tz) == 0
-    assert any("пересказывают ТЗ" in i for i in review_bid(para, {}, "UAH", tz))
+    assert any("пересказыва" in i for i in review_bid(para, {}, "UAH", tz))
+
+
+def test_opening_after_greeting_must_not_restate_tz():
+    tz = "Кладу прайси в папку, скрипт робить один ексель з артикулом, ціною в гривнях за курсом НБУ або вручну заданим курсом, найдешевший постачальник, інші постачальники в окремій колонці."
+    weak = "Олександре, добрий день. Скрипт робитиме один ексель з артикулом і ціною в гривнях за курсом НБУ. Решта потім."
+    strong = "Олександре, добрий день. Найризикованіше тут зведення дублів: один артикул пишеться по-різному. Скрипт зробить один ексель з ціною за курсом НБУ."
+    assert opening(strong).startswith("Найризикованіше")
+    assert any("первая фраза" in i for i in review_bid(weak, {}, "UAH", tz))
+    assert not any("ТЗ" in i for i in review_bid(strong, {}, "UAH", tz))
 
 
 def test_write_bid_gets_rivals_and_new_fields():

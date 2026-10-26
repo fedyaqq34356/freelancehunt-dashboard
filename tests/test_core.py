@@ -319,7 +319,7 @@ def test_assemble_terms_ru_uk_and_stages():
     uk = parse_project(project_item(name="Створення AI-агентів", desc="Нас цікавить аналітика звітів 1С і підключення"))
     stages = [{"title": "основна частина.", "price": 20000, "days": 7}, {"title": "доводка", "price": 17000, "days": 5}]
     t = assemble("Тіло.", {"price": 37000, "days": 12, "stages": stages}, uk, "Пишіть.")
-    assert "Етап 1 (основна частина): 20 000 грн, 7 днів\nЕтап 2 (доводка): 17 000 грн, 5 днів" in t
+    assert "Етап 1 (основна частина): 20 000 грн, 7 днів\nЕтап 2 (доводка): 17 000 грн, 5 днів\nРазом: 37 000 грн, 12 днів" in t
     assert "Бюджет" not in t and t.endswith("Пишіть.")
 
 
