@@ -9,6 +9,7 @@ from freelancehunt.client import FreelancehuntClient
 
 from .catalog import Case, parse_portfolio, parse_reviews
 from .projects import Project, parse_project, passes
+from .ranks import fmt, positions
 from .state import State
 
 log = logging.getLogger(__name__)
@@ -42,9 +43,8 @@ def profile_facts(profile: dict) -> str:
         lines.append(f"Отзывы: {a['positive_reviews']} положительных, {neg} отрицательных")
     if a.get("average_grade"):
         lines.append(f"Средняя оценка: {a['average_grade']} из 10")
-    for sk in a.get("skills") or []:
-        if isinstance(sk, dict) and sk.get("rating_position"):
-            lines.append(f"Место в рейтинге категории «{sk.get('name')}»: {sk['rating_position']}")
+    for name, pos, total in positions(profile):
+        lines.append(f"Место в рейтинге категории «{name}»: {pos}" + (f" из {fmt(total)}" if total else ""))
     return "\n".join(lines)
 
 

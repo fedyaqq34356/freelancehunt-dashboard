@@ -148,3 +148,37 @@ def test_matcher_caches_index_and_picks(tmp_path):
     asyncio.run(m2.best(p, cs))
     assert llm.embeds == first_embeds + 1
     assert asyncio.run(Matcher(EmbedLLM("none"), str(tmp_path / "index.json")).best(p, cs)) is None
+
+
+PROFILE = {
+    "id": 1,
+    "attributes": {
+        "first_name": "Г",
+        "rating_position": 458,
+        "skills": [
+            {"id": 180, "name": "Разработка ботов", "rating_position": 17},
+            {"id": 175, "name": "AI и машинное обучение", "rating_position": 3},
+            {"id": 99, "name": "Веб-программирование", "rating_position": 138},
+        ],
+    },
+}
+
+
+def test_strong_rank_fact_only_for_project_category_in_top20():
+    from po.ranks import strong_fact
+
+    ai = parse_project(project_item(skills=("AI и машинное обучение", "Разработка ботов")))
+    assert strong_fact(ai, PROFILE) == "3 место из 2 665 в рейтинге категории «AI и машинное обучение» на Freelancehunt"
+    assert strong_fact(parse_project(project_item(skills=("Разработка ботов",))), PROFILE).startswith("17 место из 2 689")
+    assert strong_fact(parse_project(project_item(skills=("Веб-программирование",))), PROFILE) == ""
+    assert strong_fact(parse_project(project_item(skills=("Дизайн",))), PROFILE) == ""
+
+
+def test_rank_goes_into_prompt_and_profile_shows_positions():
+    llm = FakeLLM()
+    cs = parse_reviews(REVIEWS)
+    asyncio.run(Po(llm).write_bid(parse_project(project_item()), cs, rank="3 место из 2 665"))
+    assert "СИЛЬНЫЙ ФАКТ\n3 место из 2 665" in llm.calls[0]["prompt"]
+    text = ui.profile_message({"data": PROFILE}, 79, 31, 0, False)
+    assert "В общем рейтинге: <b>458</b> / 291 877" in text
+    assert "AI и машинное обучение: <b>3</b> / 2 665 👑" in text and "Разработка ботов: <b>17</b> / 2 689 🔥" in text

@@ -58,6 +58,8 @@ BID_RULES = """Ты По. Пишешь ставку на Freelancehunt от пе
 - Срок не длиннее самого короткого у содержательных конкурентов, если задача реально делается так быстро. Для мелких задач лучше часы (minutes).
 - rivals_note: одна-две фразы фрилансеру, что пишут конкуренты и чем его ставка отличается.
 
+Рейтинг: если дан блок СИЛЬНЫЙ ФАКТ, вставь его одной короткой фразой в начало второго или третьего предложения, на языке проекта, без хвастовства (например «У рейтингу AI на Freelancehunt я на 3-му місці з 2 665»). Больше никаких цифр профиля не перечисляй.
+
 Скрытие: hide=true, если в ставке есть своё решение или идея, которую конкуренты могут скопировать (у фрилансера Plus, ставку можно скрыть). hide_reason: коротко почему.
 
 Цена и срок:
@@ -278,6 +280,7 @@ class Po:
         repeat: bool = False,
         rivals: str = "",
         rivals_summary: str = "",
+        rank: str = "",
     ) -> BidDraft:
         catalog = cases[:MAX_CASES_IN_PROMPT]
         past = [c for c in catalog if repeat and c.client_id and c.client_id == project.employer_id]
@@ -289,6 +292,8 @@ class Po:
         prompt += f"\n\nКАТАЛОГ МОИХ РАБОТ\n{render_for_prompt(catalog)}"
         if facts:
             prompt += f"\n\nФАКТЫ ПРОФИЛЯ\n{facts}"
+        if rank:
+            prompt += f"\n\nСИЛЬНЫЙ ФАКТ\n{rank}"
         if rivals:
             prompt += f"\n\nСТАВКИ КОНКУРЕНТОВ ({rivals_summary})\n{rivals}"
         if previous:

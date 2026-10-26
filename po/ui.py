@@ -6,6 +6,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardBu
 
 from .agent import BidDraft
 from .projects import Project
+from .ranks import OVERALL_TOTAL, fmt, positions
 from .text import clip
 
 BTN_PROJECTS = "Свежие проекты"
@@ -140,6 +141,17 @@ def profile_message(
     elif a.get("rating") is not None:
         lines.append(f"Рейтинг: {a.get('rating')}")
     lines.append(f"По знает {cases_total} работ, из них {reviews_total} с отзывами")
+    pos = positions(profile.get("data") or {})
+    if pos:
+        lines.append("")
+        lines.append("<b>Позиции</b>")
+        overall = a.get("rating_position")
+        if overall:
+            lines.append(f"В общем рейтинге: <b>{fmt(int(overall))}</b> / {fmt(OVERALL_TOTAL)}")
+        for name, p, total in pos:
+            crown = " 👑" if p <= 3 else (" 🔥" if p <= 20 else "")
+            lines.append(f"{html.escape(name)}: <b>{p}</b>" + (f" / {fmt(total)}" if total else "") + crown)
+        lines.append("")
     lines.append(f"Мин. бюджет: {'без лимита' if not min_budget else f'{min_budget} UAH'}")
     lines.append("Лента проектов: " + ("на паузе" if paused else "включена"))
     if stats:

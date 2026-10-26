@@ -11,7 +11,7 @@ from aiogram.types import CallbackQuery, LinkPreviewOptions, Message
 
 from freelancehunt.client import FreelancehuntClient, FreelancehuntError
 
-from . import competitors, ui
+from . import competitors, ranks, ui
 from .agent import Po
 from .catalog import best_matches
 from .config import Settings
@@ -92,7 +92,8 @@ class App:
             cases = await self.service.cases()
             facts = await self.service.facts()
             repeat = project.employer_id in await self.service.past_clients()
-            login = (await self.service.profile()).get("attributes", {}).get("login", "")
+            profile = await self.service.profile()
+            login = profile.get("attributes", {}).get("login", "")
             rivals = await competitors.load(project.url, login)
             with self.meter.measure("bids") as spent:
                 draft = await self.po.write_bid(
@@ -103,6 +104,7 @@ class App:
                     repeat=repeat,
                     rivals=competitors.render_for_prompt(rivals),
                     rivals_summary=competitors.summary(rivals, project.bid_count) if rivals else "",
+                    rank=ranks.strong_fact(project, profile),
                 )
             draft.cost = sum(spent)
             self.state.save()
