@@ -305,6 +305,7 @@ def test_stages_shown_in_bid_message():
     d = asyncio.run(Po(FakeLLM(bid=bid)).write_bid(p, cases()))
     text = ui.bid_message(p, d)
     assert "Этап 1: 20 000 UAH, 7 дн. · основа" in text and "Этап 2: 17 000 UAH, 5 дн. · доводка" in text
+    assert "сумму Этапа 1: 20 000 UAH, срок 7 дн." in text and "💰 37" not in text
 
 
 def test_assemble_terms_ru_uk_and_stages():

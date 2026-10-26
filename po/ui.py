@@ -68,9 +68,12 @@ def bid_message(p: Project, d: BidDraft) -> str:
     for i, st in enumerate(d.stages, 1):
         price = f"{st['price']:,}".replace(",", " ")
         lines.append(f"Этап {i}: {price} {e(d.currency)}, {st['days']} дн. · {e(clip(st['title'], 60))}")
-    if d.price:
+    if d.stages:
+        first = f"{d.stages[0]['price']:,}".replace(",", " ")
+        lines.append(f"<i>В поле цены на сайте ставь сумму Этапа 1: {first} {e(d.currency)}, срок {d.stages[0]['days']} дн.</i>")
+    elif d.price:
         terms.append(f"💰 {d.price:,} {e(d.currency)}".replace(",", " "))
-    if d.days:
+    if d.days and not d.stages:
         terms.append(f"⏱ {d.days} дн.")
     if terms:
         lines.append(" · ".join(terms))
