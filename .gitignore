@@ -1,7 +1,9 @@
 bot_state.json
 data/
 .env
+HANDOFF.md
 income_extras.json
+local/
 *.pyc
 __pycache__/
 .pytest_cache/
