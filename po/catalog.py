@@ -17,6 +17,7 @@ class Case:
     budget: str = ""
     review: str = ""
     grade: Optional[float] = None
+    client_id: Optional[int] = None
     _stems: set = field(default_factory=set, repr=False)
 
     def __post_init__(self):
@@ -82,6 +83,7 @@ def parse_reviews(payload: dict) -> list[Case]:
                 budget=_money(project.get("budget") or a.get("budget")),
                 review=strip_html(a.get("comment") or a.get("review") or a.get("text") or ""),
                 grade=float(grade) if isinstance(grade, (int, float)) else None,
+                client_id=(a.get("from") or {}).get("id"),
             )
         )
     return out

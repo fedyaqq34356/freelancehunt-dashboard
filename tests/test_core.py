@@ -122,8 +122,10 @@ def test_po_writes_bid_with_only_real_cases():
     assert draft.text.startswith("У меня уже работает бот записи")
     assert [c["name"] for c in llm.calls] == ["bid", "humanize"]
     assert "[r77]" in llm.calls[0]["prompt"] and "ПРОЕКТ" in llm.calls[0]["prompt"]
-    assert "Не расписывай план работ" in llm.calls[0]["instructions"]
-    assert "Заказчик: Иван" in llm.calls[0]["prompt"]
+    assert "Образцы его реальных выигравших ставок" in llm.calls[0]["instructions"]
+    assert "ставь ровно бюджет" in llm.calls[0]["instructions"]
+    assert "Заказчик: Иван (завершённых проектов у него: 0)" in llm.calls[0]["prompt"]
+    assert "УЖЕ РАБОТАЛ" not in llm.calls[0]["prompt"]
     assert llm.calls[1]["instructions"] == humanizer.RULES
 
 
@@ -167,12 +169,12 @@ def test_review_bid_flags_plans_generic_length_and_refs():
     from po.agent import review_bid
 
     assert review_bid("Иван, у меня уже работает бот записи с оплатой. Подключу календарь. 4000 грн за 4 дня, оплата картой или Monobank?") == []
-    issues = review_bid("Проверю код, подключу бота и настрою сервер. У меня есть опыт. " + "x" * 700 + " [r12]")
+    issues = review_bid("Проверю код, подключу бота, настрою сервер и сделаю. У меня есть опыт. " + "x" * 700 + " [r12]")
     assert len(issues) == 4
 
 
 def test_po_rewrites_bid_when_critic_finds_issues():
-    bad = {"fit": "high", "cases": [], "bid": "Проверю, настрою и сделаю. Есть опыт.", "price": 1, "days": 1, "note": ""}
+    bad = {"fit": "high", "cases": [], "bid": "Проверю, настрою, подключу и сделаю. Есть опыт.", "price": 1, "days": 1, "note": ""}
     good = {"fit": "high", "cases": [{"ref": "r77", "why": "x"}], "bid": "У меня уже работает бот записи.", "price": 2, "days": 2, "note": ""}
 
     class Seq(FakeLLM):
@@ -201,7 +203,7 @@ def test_cleanup_keeps_number_ranges():
 
 
 def test_rewrite_keeps_cases_if_model_drops_them():
-    bad = {"fit": "high", "cases": [{"ref": "r77", "why": "x"}], "bid": "Проверю и настрою.", "price": 1, "days": 1, "note": ""}
+    bad = {"fit": "high", "cases": [{"ref": "r77", "why": "x"}], "bid": "Имею большой опыт.", "price": 1, "days": 1, "note": ""}
     good = {"fit": "high", "cases": [], "bid": "Бот записи уже работает.", "price": 2, "days": 2, "note": ""}
 
     class Seq(FakeLLM):
@@ -227,3 +229,47 @@ def test_review_bid_flags_hourly_rate_and_self_doubt():
     assert review_bid("Моя ставка 10 USD/час.") and review_bid("Работаю за 400 грн в час.")
     assert review_bid("У меня есть завершённая доработка сайта.")
     assert not review_bid("За 5 000 грн и 2 дня. Срок 3 часа на созвон?")
+
+
+def test_hot_and_repeat_marks():
+    from po.projects import is_hot
+
+    def proj(nb, done, skill):
+        item = project_item(skills=(skill,))
+        item["attributes"]["bid_count"] = nb
+        item["attributes"]["employer"]["completed_projects"] = done
+        item["attributes"]["employer"]["id"] = 5
+        return parse_project(item)
+
+    hot = proj(12, 5, "Парсинг данных")
+    assert is_hot(hot) and hot.employer_id == 5 and hot.employer_done == 5
+    assert not is_hot(proj(25, 5, "Парсинг данных"))
+    assert not is_hot(proj(12, 1, "AI и машинное обучение"))
+    assert not is_hot(proj(12, 5, "Разработка ботов"))
+    assert card(hot).startswith("🔥 <b>")
+    assert "у заказчика проектов: 5" in card(hot)
+    weak = proj(60, 0, "Разработка ботов")
+    assert card(weak).startswith("<b>")
+    rep = card(weak, repeat=True)
+    assert rep.startswith("🤝 <b>") and "Уже работали" in rep
+
+
+def test_repeat_client_goes_into_prompt():
+    llm = FakeLLM()
+    p = parse_project(project_item())
+    p.employer_id = 555
+    cs = cases()
+    cs[0].client_id = 555
+    asyncio.run(Po(llm).write_bid(p, cs, repeat=True))
+    assert "УЖЕ РАБОТАЛ С ФРИЛАНСЕРОМ" in llm.calls[0]["prompt"]
+    assert "Разработка Telegram-бота для записи клиентов и оплаты" in llm.calls[0]["prompt"].split("КАТАЛОГ")[0]
+
+
+def test_review_client_id_parsed():
+    data = {"data": [{"id": 1, "attributes": {"comment": "ok", "from": {"id": 42}, "project": {"name": "X"}}}]}
+    assert parse_reviews(data)[0].client_id == 42
+
+
+def test_profile_message_with_stats():
+    text = ui.profile_message({"data": {"attributes": {"first_name": "Г"}}}, 79, 31, 0, False, {"days": 30, "total": 20, "won": 3})
+    assert "Ставки за 30 дней: 20, выиграно 3 (15%)" in text and "🔥" in text

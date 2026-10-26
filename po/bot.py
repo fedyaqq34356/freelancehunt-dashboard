@@ -42,14 +42,15 @@ class App:
         return owner is not None and user_id == owner
 
     async def send_project(self, p: Project) -> None:
-        match = None
+        match, repeat = None, False
         try:
             matches = best_matches(p.search_text, await self.service.cases(), n=1)
             match = matches[0] if matches else None
+            repeat = p.employer_id in await self.service.past_clients()
         except FreelancehuntError as e:
             log.warning("кейсы недоступны: %s", e)
         await self.bot.send_message(
-            self.chat, card(p, match), parse_mode="HTML", reply_markup=ui.project_kb(p), link_preview_options=NO_PREVIEW
+            self.chat, card(p, match, repeat), parse_mode="HTML", reply_markup=ui.project_kb(p), link_preview_options=NO_PREVIEW
         )
 
     async def make_bid(self, cq: CallbackQuery, pid: int, again: bool) -> None:
@@ -63,7 +64,10 @@ class App:
             project = await self.service.project(pid)
             cases = await self.service.cases()
             facts = await self.service.facts()
-            draft = await self.po.write_bid(project, cases, facts, previous=self.last_bid.get(pid) if again else None)
+            repeat = project.employer_id in await self.service.past_clients()
+            draft = await self.po.write_bid(
+                project, cases, facts, previous=self.last_bid.get(pid) if again else None, repeat=repeat
+            )
             self.last_bid[pid] = draft.text
             await cq.message.reply(
                 ui.bid_message(project, draft), parse_mode="HTML", reply_markup=ui.bid_kb(project), link_preview_options=NO_PREVIEW
@@ -183,8 +187,10 @@ def build_router(app: App) -> Router:
         prof = {"data": await app.service.profile(force=True)}
         cases = await app.service.cases(force=True)
         reviews = sum(1 for c in cases if c.kind == "review")
+        stats = await app.service.bid_stats(30)
         await m.answer(
-            ui.profile_message(prof, len(cases), reviews, app.state["min_budget"], app.state["paused"]), parse_mode="HTML"
+            ui.profile_message(prof, len(cases), reviews, app.state["min_budget"], app.state["paused"], stats),
+            parse_mode="HTML",
         )
 
     @r.callback_query(owner, F.data.startswith("min:"))

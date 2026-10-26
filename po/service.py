@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 from freelancehunt.client import FreelancehuntClient
@@ -95,6 +96,27 @@ class Service:
                 self.state["my_id"] = self._profile["id"]
                 self.state.save()
         return self._profile
+
+    async def past_clients(self) -> set[int]:
+        return {c.client_id for c in await self.cases() if c.client_id}
+
+    async def bid_stats(self, days: int = 30) -> dict:
+        """Ставки за последние N дней: всего, сколько выиграно."""
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        total = won = 0
+        for page in range(1, 40):
+            r = await self.call(self.client.get, "/my/bids", {"page[number]": page})
+            stop = False
+            for b in r.get("data") or []:
+                a = b["attributes"]
+                if datetime.fromisoformat(a["published_at"]) < since:
+                    stop = True
+                    continue
+                total += 1
+                won += bool(a.get("is_winner"))
+            if stop or not (r.get("links") or {}).get("next"):
+                break
+        return {"days": days, "total": total, "won": won}
 
     async def facts(self) -> str:
         return profile_facts(await self.profile())

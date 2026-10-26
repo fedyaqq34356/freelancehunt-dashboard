@@ -33,6 +33,15 @@ class FakeClient:
         self.project_calls.append(filters)
         return {"data": self.items}
 
+    def get(self, path, params=None):
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(timezone.utc)
+        mk = lambda d, w: {"attributes": {"published_at": (now - timedelta(days=d)).isoformat(), "is_winner": w}}
+        if params["page[number]"] == 1:
+            return {"data": [mk(1, True), mk(5, False), mk(10, False)], "links": {"next": "x"}}
+        return {"data": [mk(20, True), mk(40, False)], "links": {"next": "x"}}
+
     def project(self, pid):
         return {"data": project_item(pid)}
 
@@ -100,3 +109,20 @@ def test_router_builds_and_owner_check(tmp_path):
     assert not app.is_owner(7)
     st["owner_chat_id"] = 9
     assert app.is_owner(9)
+
+
+def test_bid_stats_counts_recent_and_stops(tmp_path):
+    s = Service(FakeClient(), State(str(tmp_path / "s.json")))
+    assert run(s.bid_stats(30)) == {"days": 30, "total": 4, "won": 2}
+
+
+def test_past_clients_from_reviews(tmp_path):
+    import copy
+    import conftest
+
+    c = FakeClient()
+    rev = copy.deepcopy(conftest.REVIEWS)
+    rev["data"][0]["attributes"]["from"] = {"id": 99}
+    c.reviews = lambda pid, page=1: rev
+    s = Service(c, State(str(tmp_path / "s.json")))
+    assert run(s.past_clients()) == {99}

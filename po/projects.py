@@ -18,6 +18,8 @@ class Project:
     url: str = ""
     employer: str = ""
     employer_name: str = ""
+    employer_id: Optional[int] = None
+    employer_done: int = 0
     plus_only: bool = False
     status: str = ""
 
@@ -50,6 +52,8 @@ def parse_project(item: dict) -> Project:
         url=(links.get("web") if isinstance(links, dict) else "") or f"https://freelancehunt.com/project/{pid}.html",
         employer=" ".join(x for x in (emp.get("first_name"), emp.get("last_name")) if x) or emp.get("login", ""),
         employer_name=(emp.get("first_name") or "").strip(),
+        employer_id=emp.get("id"),
+        employer_done=int(emp.get("completed_projects") or 0),
         plus_only=bool(a.get("is_only_for_plus")),
         status=(status or {}).get("name", "") if isinstance(status, dict) else str(status or ""),
     )
@@ -64,13 +68,24 @@ def passes(p: Project, min_budget: int) -> bool:
     return p.amount >= min_budget
 
 
-def card(p: Project, match: Optional[Case] = None) -> str:
+HOT_SKILLS = ("AI и машинное обучение", "Парсинг данных")
+
+
+def is_hot(p: Project) -> bool:
+    """До 20 ставок, заказчик с 3+ проектами, категория AI или парсинг."""
+    return p.bid_count <= 20 and p.employer_done >= 3 and any(s in HOT_SKILLS for s in p.skills)
+
+
+def card(p: Project, match: Optional[Case] = None, repeat: bool = False) -> str:
     e = html.escape
-    lines = [f"<b>{e(p.name)}</b>"]
-    meta = [f"💰 {e(p.budget)}", f"ставок: {p.bid_count}"]
+    marks = ("🔥 " if is_hot(p) else "") + ("🤝 " if repeat else "")
+    lines = [f"{marks}<b>{e(p.name)}</b>"]
+    meta = [f"💰 {e(p.budget)}", f"ставок: {p.bid_count}", f"у заказчика проектов: {p.employer_done}"]
     if p.plus_only:
         meta.append("Plus")
     lines.append(" · ".join(meta))
+    if repeat:
+        lines.append("Уже работали с этим заказчиком")
     if p.skills:
         lines.append(f"<i>{e(', '.join(p.skills))}</i>")
     if p.description:

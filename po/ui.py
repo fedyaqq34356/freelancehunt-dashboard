@@ -87,7 +87,9 @@ def bid_message(p: Project, d: BidDraft) -> str:
     return "\n".join(lines)
 
 
-def profile_message(profile: dict, cases_total: int, reviews_total: int, min_budget: int, paused: bool) -> str:
+def profile_message(
+    profile: dict, cases_total: int, reviews_total: int, min_budget: int, paused: bool, stats: Optional[dict] = None
+) -> str:
     a = (profile.get("data") or {}).get("attributes") or {}
     name = " ".join(x for x in (a.get("first_name"), a.get("last_name")) if x) or a.get("login", "")
     rating = a.get("rating") or {}
@@ -99,6 +101,11 @@ def profile_message(profile: dict, cases_total: int, reviews_total: int, min_bud
     lines.append(f"По знает {cases_total} работ, из них {reviews_total} с отзывами")
     lines.append(f"Мин. бюджет: {'без лимита' if not min_budget else f'{min_budget} UAH'}")
     lines.append("Лента проектов: " + ("на паузе" if paused else "включена"))
+    if stats:
+        rate = round(100 * stats["won"] / stats["total"]) if stats["total"] else 0
+        lines.append(f"Ставки за {stats['days']} дней: {stats['total']}, выиграно {stats['won']} ({rate}%)")
+    lines.append("")
+    lines.append("🔥 в ленте: до 20 ставок, у заказчика 3+ проекта, AI или парсинг. 🤝 уже работали с заказчиком.")
     return "\n".join(lines)
 
 
