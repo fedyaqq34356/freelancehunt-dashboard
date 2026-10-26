@@ -1,5 +1,6 @@
 """Мои кейсы: работы из портфолио и завершённые проекты с отзывами."""
 import math
+import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -44,12 +45,18 @@ def _money(b: Any) -> str:
     return ""
 
 
+# Шуточные и личные работы: заказчику их не показываем и в ставки не берём.
+EXCLUDED_WORKS = re.compile(
+    r"пьяного мужика|удалитель водяных|стресс-скрин|резервные-точки|обновить-зеркала|очистки системы linux", re.I
+)
+
+
 def parse_portfolio(payload: dict) -> list[Case]:
     out = []
     for item in payload.get("data") or []:
         a = item.get("attributes") or {}
         title = a.get("name") or a.get("title") or ""
-        if not title:
+        if not title or EXCLUDED_WORKS.search(title):
             continue
         skill = a.get("skill")
         out.append(

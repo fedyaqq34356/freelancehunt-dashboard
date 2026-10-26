@@ -345,3 +345,12 @@ def test_state_migrates_shown_from_seen(tmp_path):
     path = tmp_path / "s.json"
     path.write_text(json.dumps({"seen_project_ids": [5, 6]}))
     assert State(str(path))["shown_project_ids"] == [5, 6]
+
+
+def test_joke_and_personal_works_excluded():
+    data = {"data": [
+        {"id": 1, "attributes": {"name": "Телеграм-бот с персонажем пьяного мужика 45 лет."}},
+        {"id": 2, "attributes": {"name": "резервные-точки"}},
+        {"id": 3, "attributes": {"name": "Менеджер ИИ", "comment": "Отвечает только по проиндексированным чатам"}},
+    ]}
+    assert [c.ref for c in parse_portfolio(data)] == ["p3"]
