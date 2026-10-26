@@ -285,3 +285,46 @@ def test_matcher_ignores_review_praise_and_keeps_1c():
     ]
     top = best_matches("AI-агенти для аналітики звітів 1С, рекомендую можна працювати", cs, n=1, min_score=0.1)
     assert top[0].ref == "p1"
+
+
+def test_big_price_requires_two_stages():
+    from po.agent import review_bid
+
+    one = {"price": 45000, "stages": []}
+    assert any("2 этапа" in i for i in review_bid("Текст.", one, "UAH"))
+    two = {"price": 37000, "stages": [{"title": "a", "price": 20000, "days": 7}, {"title": "b", "price": 17000, "days": 5}]}
+    assert not any("этап" in i for i in review_bid("Текст.", two, "UAH"))
+    assert not any("этап" in i for i in review_bid("Текст.", {"price": 20000, "stages": []}, "UAH"))
+    assert not any("этап" in i for i in review_bid("Текст.", {"price": 900, "stages": []}, "USD"))
+
+
+def test_stages_shown_in_bid_message():
+    p = parse_project(project_item())
+    bid = {"fit": "high", "cases": [], "bid": "Текст ставки.", "price": 37000, "days": 12, "note": "",
+           "stages": [{"title": "основа", "price": 20000, "days": 7}, {"title": "доводка", "price": 17000, "days": 5}]}
+    d = asyncio.run(Po(FakeLLM(bid=bid)).write_bid(p, cases()))
+    text = ui.bid_message(p, d)
+    assert "Этап 1: 20 000 UAH, 7 дн. · основа" in text and "Этап 2: 17 000 UAH, 5 дн. · доводка" in text
+
+
+def test_assemble_terms_ru_uk_and_stages():
+    from po.agent import assemble, plural_days
+
+    assert [plural_days(n, True) for n in (1, 3, 5, 11, 22)] == ["день", "дні", "днів", "днів", "дні"]
+    assert [plural_days(n, False) for n in (1, 2, 7)] == ["день", "дня", "дней"]
+    ru = parse_project(project_item())
+    t = assemble("Тело.", {"price": 4000, "days": 3, "start_today": True}, ru, "Пишите, обсудим детали.")
+    assert t == "Тело.\n\nСрок: 3 дня\nБюджет: 4 000 грн\nНачинаю сегодня.\n\nПишите, обсудим детали."
+    uk = parse_project(project_item(name="Створення AI-агентів", desc="Нас цікавить аналітика звітів 1С і підключення"))
+    stages = [{"title": "основна частина.", "price": 20000, "days": 7}, {"title": "доводка", "price": 17000, "days": 5}]
+    t = assemble("Тіло.", {"price": 37000, "days": 12, "stages": stages}, uk, "Пишіть.")
+    assert "Етап 1 (основна частина): 20 000 грн, 7 днів\nЕтап 2 (доводка): 17 000 грн, 5 днів" in t
+    assert "Бюджет" not in t and t.endswith("Пишіть.")
+
+
+def test_assemble_drops_duplicated_closing():
+    from po.agent import assemble
+
+    p = parse_project(project_item())
+    t = assemble("Тело. Как бот определяет профиль?", {"price": 1700, "days": 1}, p, "Как бот определяет профиль?")
+    assert t.count("Как бот определяет профиль?") == 1 and t.startswith("Тело.\n\nСрок")

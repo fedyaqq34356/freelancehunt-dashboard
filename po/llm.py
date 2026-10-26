@@ -32,4 +32,12 @@ class OpenAILLM:
         u = r.usage
         if u:
             log.info("llm %s: in=%s out=%s", name, u.input_tokens, u.output_tokens)
-        return json.loads(r.output_text)
+        try:
+            return json.loads(r.output_text)
+        except ValueError:
+            if max_tokens >= 8000:
+                raise
+            log.warning("llm %s: ответ обрезан, повторяю с большим лимитом", name)
+            return await self.json(
+                instructions=instructions, prompt=prompt, schema=schema, name=name, effort=effort, max_tokens=max_tokens * 2
+            )

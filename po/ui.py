@@ -65,6 +65,9 @@ def bid_message(p: Project, d: BidDraft) -> str:
     e = html.escape
     lines = [f"<b>Ставка</b> · {FIT.get(d.fit, d.fit)}", f"<pre>{e(d.text)}</pre>"]
     terms = []
+    for i, st in enumerate(d.stages, 1):
+        price = f"{st['price']:,}".replace(",", " ")
+        lines.append(f"Этап {i}: {price} {e(d.currency)}, {st['days']} дн. · {e(clip(st['title'], 60))}")
     if d.price:
         terms.append(f"💰 {d.price:,} {e(d.currency)}".replace(",", " "))
     if d.days:

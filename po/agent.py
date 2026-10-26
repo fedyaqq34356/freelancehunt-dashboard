@@ -38,8 +38,8 @@ BID_RULES = """Ты По. Пишешь ставку на Freelancehunt от пе
 1. «Имя, добрый день.» (или «Добрий день» на украинском). Если заказчик уже работал с ним, сразу второй фразой: «Уже работали с вами» и что делали.
 2. 1-3 предложения по сути ЕГО задачи: как будет устроено решение именно под это ТЗ, с 1-2 конкретными деталями из описания (роли, источники данных, интеграции, особые случаи). Это не план этапов, а короткое «как это будет работать», чтобы было видно, что он понял задачу лучше других.
 3. Похожая готовая система из каталога: что в ней уже реализовано и почему это ускоряет его задачу. Если подходящая работа есть в портфолио ([p...]), можно сказать «в прикреплённом проекте уже реализовано ...». Если по похожему проекту есть сильный отзыв, одна короткая фраза о нём.
-4. Отдельными строками: «Срок: ...» и «Бюджет: ...». Если задача маленькая и реально делается за день, добавь «Начинаю сегодня».
-5. Закрытие «Пишите, обсудим детали.» Если в ТЗ не хватает ключевой детали, вместо этого один короткий вопрос по ней.
+4. Строки «Срок», «Бюджет» и этапы добавятся к ставке автоматически из полей price, days и stages. В поле bid их не пиши. Если задача маленькая и реально делается за день, поставь start_today=true.
+5. Поле closing: «Пишите, обсудим детали.» (на языке проекта) или, если в ТЗ не хватает ключевой детали, один короткий вопрос по ней. В поле bid этот вопрос не повторяй.
 
 Правила:
 - 300-650 знаков. Язык проекта (русский или украинский).
@@ -51,7 +51,12 @@ BID_RULES = """Ты По. Пишешь ставку на Freelancehunt от пе
 
 Как выбирать кейсы: по сути задачи (что система делает, с какими данными и сервисами работает). Кейсы с отзывом ([r...]) ценнее при равной похожести. 1-3 кейса, только ref из каталога.
 
-Цена в валюте проекта. Если бюджет указан, ставь ровно бюджет: все его выигранные ставки были ровно по бюджету, ставки ниже бюджета не выиграли ни разу. Скидку не предлагай, готовая основа значит «быстрее и надёжнее», а не «дешевле». Без бюджета ориентируйся на бюджеты похожих кейсов. Срок реалистичный и короткий.
+Цена и срок:
+- Цена в валюте проекта. Если бюджет указан, ставь ровно бюджет: все его выигранные ставки были ровно по бюджету, ставки ниже бюджета не выиграли ни разу. Скидку не предлагай, готовая основа значит «быстрее и надёжнее», а не «дешевле».
+- Если бюджета нет, цену бери по бюджетам его похожих проектов из каталога (например, AI-агенты у него стоили 11 800-19 000 грн, PIM 27 000 грн за этап, боты обычно 1 000-5 000 грн), а не по рыночным оценкам больших студий.
+- Он работает быстро с современными инструментами разработки, поэтому сроки короче рыночных: ориентируйся на сроки его похожих проектов, обычно от 1 до 10 дней. Об инструментах заказчику не пиши.
+- Если итоговая цена больше 27 000 грн, раздели работу на 2 этапа. Этап 1: основная техническая часть (подключения, данные, логика), примерно 55% суммы. Этап 2: доводка (удобство, оформление, дополнительные отчёты и сценарии), остальное. В поле stages два этапа: title коротко и на языке проекта (что входит, до 60 знаков), price, days. price = сумма этапов, days = сумма дней. Если цена до 27 000 грн, stages пустой.
+- Сильный отзыв по похожему проекту обязательно процитируй коротко, переведя на язык проекта. Это самый сильный аргумент.
 note: подсказка фрилансеру, не заказчику: риск, что уточнить, стоит ли браться.
 
 Образцы его реальных выигравших ставок (имена заказчиков заменены). Факты в них про другие проекты, бери из них только тон и структуру.
@@ -87,12 +92,25 @@ BID_SCHEMA = {
             },
         },
         "bid": {"type": "string"},
+        "closing": {"type": "string"},
+        "start_today": {"type": "boolean"},
         "price": {"type": ["integer", "null"]},
         "days": {"type": ["integer", "null"]},
+        "stages": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {"title": {"type": "string"}, "price": {"type": "integer"}, "days": {"type": "integer"}},
+                "required": ["title", "price", "days"],
+            },
+        },
         "note": {"type": "string"},
     },
-    "required": ["fit", "cases", "bid", "price", "days", "note"],
+    "required": ["fit", "cases", "bid", "closing", "start_today", "price", "days", "stages", "note"],
 }
+
+STAGE_LIMIT_UAH = 27000
 
 HUMAN_SCHEMA = {
     "type": "object",
@@ -119,6 +137,7 @@ class BidDraft:
     days: Optional[int] = None
     currency: str = ""
     note: str = ""
+    stages: list[dict] = field(default_factory=list)
 
 
 def render_project(p: Project) -> str:
@@ -135,9 +154,13 @@ def render_project(p: Project) -> str:
     )
 
 
-def review_bid(text: str) -> list[str]:
-    """Проверка ставки без модели: план работ, общие слова, длина."""
+def review_bid(text: str, raw: Optional[dict] = None, currency: str = "UAH") -> list[str]:
+    """Проверка ставки без модели: план работ, общие слова, длина, этапы для крупных сумм."""
     issues = []
+    raw = raw or {}
+    price = raw.get("price") or sum(st.get("price", 0) for st in raw.get("stages") or [])
+    if currency.upper() in ("UAH", "") and price and price > STAGE_LIMIT_UAH and len(raw.get("stages") or []) < 2:
+        issues.append(f"сумма {price} грн больше {STAGE_LIMIT_UAH}, раздели на 2 этапа (основная часть и доводка) в тексте и в stages")
     plan = PLAN_VERBS.findall(text)
     if len(plan) > 3:
         issues.append(f"слишком много обещаний сделать ({', '.join(plan)}), опиши, как будет устроено решение, а не список действий")
@@ -150,6 +173,46 @@ def review_bid(text: str) -> list[str]:
     if re.search(r"\[[rp]\d+\]", text):
         issues.append("в тексте служебные ref, убери их")
     return issues
+
+
+def is_ukrainian(text: str) -> bool:
+    return len(re.findall(r"[іїєґ]", text.lower())) >= 3
+
+
+def plural_days(n: int, uk: bool) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return "день"
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return "дні" if uk else "дня"
+    return "днів" if uk else "дней"
+
+
+def money(n: int, currency: str) -> str:
+    cur = "грн" if currency.upper() in ("UAH", "") else currency
+    return f"{n:,}".replace(",", " ") + f" {cur}"
+
+
+def assemble(body: str, raw: dict, project: Project, closing: str) -> str:
+    """Тело ставки от модели + строки срока, бюджета или этапов + концовка."""
+    uk = is_ukrainian(f"{project.name} {project.description} {body}")
+    if closing and closing.strip() in body:
+        body = body.replace(closing.strip(), "").strip()
+    cur = project.currency or "UAH"
+    lines = []
+    stages = raw.get("stages") or []
+    if len(stages) >= 2:
+        for i, st in enumerate(stages, 1):
+            word = "Етап" if uk else "Этап"
+            lines.append(f"{word} {i} ({st['title'].strip().rstrip('.')}): {money(st['price'], cur)}, {st['days']} {plural_days(st['days'], uk)}")
+    else:
+        if raw.get("days"):
+            lines.append(f"{'Термін' if uk else 'Срок'}: {raw['days']} {plural_days(raw['days'], uk)}")
+        if raw.get("price"):
+            lines.append(f"{'Бюджет'}: {money(raw['price'], cur)}")
+    if raw.get("start_today"):
+        lines.append("Починаю сьогодні." if uk else "Начинаю сегодня.")
+    parts = [body.strip(), "\n".join(lines), closing.strip()]
+    return "\n\n".join(p for p in parts if p)
 
 
 class Po:
@@ -171,14 +234,14 @@ class Po:
             prompt += f"\n\nФАКТЫ ПРОФИЛЯ\n{facts}"
         if previous:
             prompt += f"\n\nПРЕДЫДУЩИЙ ВАРИАНТ (не повторяй его, напиши по-другому, можно с другими кейсами):\n{previous}"
-        raw = await self.llm.json(instructions=BID_RULES, prompt=prompt, schema=BID_SCHEMA, name="bid", effort="medium")
+        raw = await self.llm.json(instructions=BID_RULES, prompt=prompt, schema=BID_SCHEMA, name="bid", effort="medium", max_tokens=4000)
         first = raw
         for _ in range(2):
-            issues = review_bid(raw.get("bid", ""))
+            issues = review_bid(raw.get("bid", ""), raw, project.currency)
             if not issues:
                 break
             fix = f"{prompt}\n\nТВОЙ ЧЕРНОВИК\n{raw.get('bid', '')}\n\nПерепиши ставку. Проблемы: {'; '.join(issues)}."
-            raw = await self.llm.json(instructions=BID_RULES, prompt=fix, schema=BID_SCHEMA, name="bid", effort="medium")
+            raw = await self.llm.json(instructions=BID_RULES, prompt=fix, schema=BID_SCHEMA, name="bid", effort="medium", max_tokens=4000)
         if not raw.get("cases"):
             raw["cases"] = first.get("cases") or []
 
@@ -189,7 +252,9 @@ class Po:
             case = by_ref.get(m.group(0)) if m else None
             if case and all(p.case.ref != case.ref for p in picks):
                 picks.append(Pick(case, item.get("why", "")))
-        text = await self.humanize(raw.get("bid", ""))
+        body = await self.humanize(raw.get("bid", ""))
+        closing = humanizer.cleanup(raw.get("closing") or "")
+        text = assemble(body, raw, project, closing)
         return BidDraft(
             text=text,
             fit=raw.get("fit", "medium"),
@@ -198,6 +263,7 @@ class Po:
             days=raw.get("days"),
             currency=project.currency or "UAH",
             note=raw.get("note", ""),
+            stages=raw.get("stages") or [],
         )
 
     async def humanize(self, text: str) -> str:
