@@ -86,17 +86,23 @@ def bid_message(p: Project, d: BidDraft) -> str:
         terms.append(f"⏱ {d.days} дн.")
     if terms:
         lines.append(" · ".join(terms))
-    if d.picks:
-        top = d.picks[0]
-        title = e(clip(top.case.title, 70))
-        ref = f'<a href="{e(top.case.url)}">{title}</a>' if top.case.url else title
+    def link(c) -> str:
+        title = e(clip(c.title, 70))
+        return f'<a href="{e(c.url)}">{title}</a>' if c.url else title
+
+    if d.work or d.example:
         lines.append("")
-        lines.append(f"📎 <b>Приложи:</b> «{ref}»" + (" (есть отзыв)" if top.case.kind == "review" else ""))
-        if top.why:
-            lines.append(f"<i>{e(clip(top.why, 120))}</i>")
-        rest = [e(clip(x.case.title, 50)) for x in d.picks[1:]]
-        if rest:
-            lines.append("Ещё подходят: " + "; ".join(rest))
+        if d.work:
+            lines.append(f"📎 <b>Пример работы:</b> «{link(d.work)}»")
+        if d.example:
+            lines.append(f"📎 <b>Пример проекта:</b> «{link(d.example)}» (с отзывом, ссылка уже в тексте)")
+    elif d.picks:
+        lines.append("")
+        lines.append(f"📎 <b>Приложи:</b> «{link(d.picks[0].case)}»")
+    used = {x.ref for x in (d.work, d.example) if x}
+    rest = [e(clip(x.case.title, 50)) for x in d.picks if x.case.ref not in used]
+    if rest:
+        lines.append("Ещё подходят: " + "; ".join(rest[:2]))
     if d.hide:
         lines.append("")
         lines.append(f"🙈 <b>Скрой ставку</b> (Plus): {e(clip(d.hide_reason, 140))}")

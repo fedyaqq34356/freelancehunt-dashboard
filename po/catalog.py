@@ -20,6 +20,8 @@ class Case:
     client_id: Optional[int] = None
     client_name: str = ""
     date: str = ""
+    project_id: Optional[int] = None
+    public: Optional[bool] = None
     _stems: set = field(default_factory=set, repr=False)
 
     def __post_init__(self):
@@ -90,6 +92,7 @@ def parse_reviews(payload: dict) -> list[Case]:
                     x for x in ((a.get("from") or {}).get("first_name"), (a.get("from") or {}).get("last_name")) if x
                 ),
                 date=(a.get("published_at") or "")[:10],
+                project_id=project.get("id"),
             )
         )
     return out
@@ -133,5 +136,7 @@ def render_for_prompt(cases: list[Case]) -> str:
             parts.append("| " + clip(c.text, 220))
         if c.review:
             parts.append(f'| отзыв: "{clip(c.review, 160)}"')
+        if c.kind == "review" and c.public is False:
+            parts.append("| личный проект: в «Пример проекта» не приложить, ссылку не давать")
         lines.append(" ".join(parts))
     return "\n".join(lines)

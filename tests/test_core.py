@@ -149,7 +149,7 @@ def test_bid_message_and_keyboards():
     draft = asyncio.run(Po(FakeLLM()).write_bid(p, cases()))
     text = ui.bid_message(p, draft)
     assert "<pre>" in text and "4 500 UAH" in text and "4 дн." in text
-    assert "(есть отзыв)" in text
+    assert "📎 <b>Приложи:</b>" in text
     kb = ui.project_kb(p).inline_keyboard[0]
     assert kb[0].url == p.url and kb[1].callback_data == "bid:101"
     kb = ui.bid_kb(p).inline_keyboard[0]

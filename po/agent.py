@@ -21,6 +21,7 @@ GENERIC = re.compile(
 )
 HOURLY = re.compile(r"\$\s?\d+\s?/\s?ч|ставк\w* \$|\d+\s?(грн|uah|usd|eur|\$)?\s?(/|в)\s?(ч\b|час)", re.I)
 REF = re.compile(r"[rp]\d+")
+LATIN_START = re.compile(r"^\s*[A-Za-z][a-z]+,")
 MAX_LEN = 700
 
 BID_RULES = """Ты По. Пишешь ставку на Freelancehunt от первого лица фрилансера. Он делает на Python Telegram-ботов, парсеры, AI-агентов и автоматизацию, сайты, CRM, админки.
@@ -35,9 +36,12 @@ BID_RULES = """Ты По. Пишешь ставку на Freelancehunt от пе
 Исследования площадок говорят то же: персонализированный текст повышает шанс найма, шаблонный снижает, а текст, который звучит как написанный нейросетью, перестаёт что-то значить для заказчика.
 
 Структура (держи её, это его живой стиль, который выигрывал):
-1. «Имя, добрый день.» (или «Добрий день» на украинском). Если заказчик уже работал с ним, сразу второй фразой: «Уже работали с вами» и что делали.
+1. «Имя, добрый день.» (или «Добрий день» на украинском). Имя всегда кириллицей на языке ставки, даже если в профиле латиница: Dima → Дима (Діма), Oleksandr → Олександр (Александр), Kostiantyn → Костянтин. Если имени нет, просто «Добрый день.» Если заказчик уже работал с ним, сразу второй фразой: «Уже работали с вами» и что делали.
 2. 1-3 предложения, которых НЕТ в ТЗ. Не пересказывай ТЗ: заказчик знает свою задачу, а пересказ делают почти все конкуренты (часто нейросетью). Каждое предложение добавляет одно из: риск или подводный камень, о котором заказчик не подумал; как результат будет выглядеть для него на практике (запуск двойным кликом, файл с датой в названии, кнопка в боте); решение спорного места задачи. Пример хорошего хода: «Найризикованіше тут не парсинг, а зведення дублів: один артикул у різних постачальників пишеться по-різному».
-3. Похожий проект называй явно, по названию в кавычках, и это должен быть первый кейс в cases (его фрилансер приложит к ставке). Если по нему есть отзыв, процитируй коротко: «За схожий проєкт "Назва" замовник написав: "..."». Если отзыва нет: «У прикріпленому проєкті "Назва" вже працює ...». Отзыв переводи на язык проекта.
+3. На сайте к ставке прикладываются две вещи, выбери обе:
+   - work_ref: «Пример работы» из портфолио ([p...]), самая точная по задаче.
+   - project_ref: «Пример проекта», выполненный проект с отзывом ([r...]), только НЕ личный (у личных в каталоге пометка), самый похожий по задаче, а не просто с хорошим отзывом. Ссылка на него добавится к ставке автоматически.
+   В тексте назови похожую систему явно и процитируй коротко отзыв по project_ref: «За схожий проєкт "Назва" замовник написав: "..."». Отзыв переводи на язык проекта. Если подходящего публичного проекта нет, project_ref пустой, опирайся на work_ref: «У прикріпленому прикладі "Назва" вже працює ...».
 4. Строки «Срок», «Бюджет» и этапы добавятся к ставке автоматически из полей price, days, minutes и stages. В поле bid их не пиши. Если задача маленькая и реально делается за день, поставь start_today=true.
 5. Поле closing: «Пишите, обсудим детали.» (на языке проекта) или, если в ТЗ не хватает ключевой детали, один короткий вопрос по ней. В поле bid этот вопрос не повторяй.
 
@@ -104,6 +108,8 @@ BID_SCHEMA = {
                 "required": ["ref", "why"],
             },
         },
+        "work_ref": {"type": "string"},
+        "project_ref": {"type": "string"},
         "bid": {"type": "string"},
         "closing": {"type": "string"},
         "start_today": {"type": "boolean"},
@@ -125,7 +131,7 @@ BID_SCHEMA = {
         "rivals_note": {"type": "string"},
     },
     "required": [
-        "fit", "cases", "bid", "closing", "start_today", "price", "days", "minutes", "stages", "note",
+        "fit", "cases", "work_ref", "project_ref", "bid", "closing", "start_today", "price", "days", "minutes", "stages", "note",
         "hide", "hide_reason", "rivals_note",
     ],
 }
@@ -164,6 +170,8 @@ class BidDraft:
     rivals_note: str = ""
     rivals_summary: str = ""
     cost: float = 0.0
+    work: Optional[Case] = None
+    example: Optional[Case] = None
 
 
 def render_project(p: Project) -> str:
@@ -194,6 +202,8 @@ def restated(text: str, project_text: str) -> int:
 def review_bid(text: str, raw: Optional[dict] = None, currency: str = "UAH", project_text: str = "") -> list[str]:
     """Проверка ставки без модели: пересказ ТЗ, план работ, общие слова, длина, этапы для крупных сумм."""
     issues = []
+    if LATIN_START.search(text) and re.search(r"[а-яіїє]", project_text, re.I):
+        issues.append("имя заказчика латиницей, напиши его кириллицей (Dima → Дима)")
     if project_text and restated(text, project_text) >= 2:
         issues.append("предложения пересказывают ТЗ, замени их тем, чего в ТЗ нет: риск, наглядный результат, готовая система")
     raw = raw or {}
@@ -245,7 +255,7 @@ def money(n: int, currency: str) -> str:
     return f"{n:,}".replace(",", " ") + f" {cur}"
 
 
-def assemble(body: str, raw: dict, project: Project, closing: str) -> str:
+def assemble(body: str, raw: dict, project: Project, closing: str, example: Optional[Case] = None) -> str:
     """Тело ставки от модели + строки срока, бюджета или этапов + концовка."""
     uk = is_ukrainian(f"{project.name} {project.description} {body}")
     if closing and closing.strip() in body:
@@ -266,6 +276,8 @@ def assemble(body: str, raw: dict, project: Project, closing: str) -> str:
             lines.append(f"{'Бюджет'}: {money(raw['price'], cur)}")
     if raw.get("start_today"):
         lines.append("Починаю сьогодні." if uk else "Начинаю сегодня.")
+    if example and example.public and example.url:
+        body = f"{body.strip()}\n{example.url} - {'відгук замовника' if uk else 'отзыв заказчика'}"
     parts = [body.strip(), "\n".join(lines), closing.strip()]
     return "\n\n".join(p for p in parts if p)
 
@@ -319,9 +331,18 @@ class Po:
             case = by_ref.get(m.group(0)) if m else None
             if case and all(p.case.ref != case.ref for p in picks):
                 picks.append(Pick(case, item.get("why", "")))
+        def pick_ref(field: str, kind: str) -> Optional[Case]:
+            m = REF.search(str(raw.get(field, "")))
+            c = by_ref.get(m.group(0)) if m else None
+            if not c or c.kind != kind or (kind == "review" and c.public is False):
+                return None
+            return c
+
+        work = pick_ref("work_ref", "portfolio")
+        example = pick_ref("project_ref", "review")
         body = await self.humanize(raw.get("bid", ""))
         closing = humanizer.cleanup(raw.get("closing") or "")
-        text = assemble(body, raw, project, closing)
+        text = assemble(body, raw, project, closing, example)
         return BidDraft(
             text=text,
             fit=raw.get("fit", "medium"),
@@ -336,6 +357,8 @@ class Po:
             hide_reason=raw.get("hide_reason", ""),
             rivals_note=raw.get("rivals_note", "") if rivals else "",
             rivals_summary=rivals_summary,
+            work=work,
+            example=example,
         )
 
     async def humanize(self, text: str) -> str:

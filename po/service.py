@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
-from freelancehunt.client import FreelancehuntClient
+from freelancehunt.client import FreelancehuntClient, FreelancehuntError
 
 from .catalog import Case, parse_portfolio, parse_reviews
 from .projects import Project, parse_project, passes
@@ -83,10 +83,31 @@ class Service:
             me = await self.my_id()
             reviews = parse_reviews({"data": await self._all_pages(self.client.reviews, me)})
             portfolio = parse_portfolio({"data": await self._all_pages(self.client.portfolio, me)})
+            await self._mark_public(reviews)
             self._cases = reviews + portfolio
             self._cases_at = time.time()
             log.info("кейсы обновлены: %d отзывов, %d работ", len(reviews), len(portfolio))
             return self._cases
+
+    async def _mark_public(self, reviews: list[Case]) -> None:
+        """Личные проекты API не отдаёт (404): их нельзя приложить как «Пример проекта» и дать ссылку."""
+        known = self.state.data.setdefault("public_projects", {})
+        for c in reviews:
+            if not c.project_id:
+                continue
+            key = str(c.project_id)
+            if key not in known:
+                try:
+                    data = (await self.call(self.client.project, c.project_id))["data"]
+                    known[key] = ((data.get("links") or {}).get("self") or {}).get("web") or ""
+                except FreelancehuntError as e:
+                    if e.status != 404:
+                        continue
+                    known[key] = None
+            c.public = known[key] is not None
+            if c.public and known[key]:
+                c.url = known[key]
+        self.state.save()
 
     async def profile(self, force: bool = False) -> dict:
         if force or not self._profile or time.time() - self._profile_at > self.catalog_ttl:

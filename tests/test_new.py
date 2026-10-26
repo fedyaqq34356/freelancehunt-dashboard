@@ -194,3 +194,56 @@ def test_rank_goes_into_prompt_and_profile_shows_positions():
     text = ui.profile_message({"data": PROFILE}, 79, 31, 0, False)
     assert "В общем рейтинге: <b>458</b> / 291 877" in text
     assert "AI и машинное обучение: <b>3</b> / 2 665 👑" in text and "Разработка ботов: <b>17</b> / 2 689 🔥" in text
+
+
+def test_two_attachments_public_link_and_private_note():
+    from po.catalog import render_for_prompt
+
+    cs = parse_reviews(REVIEWS) + parse_portfolio(PORTFOLIO)
+    cs[0].public, cs[0].url = True, "https://freelancehunt.com/project/bot/900.html"
+    llm = FakeLLM()
+    llm.bid = {**llm.bid, "work_ref": "[p1]", "project_ref": "r77"}
+    p = parse_project(project_item())
+    d = asyncio.run(Po(llm).write_bid(p, cs))
+    assert d.work.ref == "p1" and d.example.ref == "r77"
+    assert "https://freelancehunt.com/project/bot/900.html - отзыв заказчика" in d.text
+    msg = ui.bid_message(p, d)
+    assert "📎 <b>Пример работы:</b>" in msg and "📎 <b>Пример проекта:</b>" in msg
+    cs[0].public = False
+    assert "личный проект" in render_for_prompt(cs[:1])
+    d2 = asyncio.run(Po(llm).write_bid(p, cs))
+    assert d2.example is None and "отзыв заказчика" not in d2.text
+
+
+def test_latin_name_flagged_for_cyrillic_project():
+    assert any("латиницей" in i for i in review_bid("Dima, добрый день. Текст.", {}, "UAH", "Чат блок в CRM"))
+    assert not any("латиницей" in i for i in review_bid("Дима, добрый день.", {}, "UAH", "Чат блок в CRM"))
+    assert not any("латиницей" in i for i in review_bid("John, hello.", {}, "USD", "Chat block in CRM"))
+
+
+def test_service_marks_private_reviews(tmp_path):
+    from freelancehunt.client import FreelancehuntError
+    from po.service import Service
+
+    class C:
+        def my_profile(self):
+            return {"data": {"id": 1, "attributes": {}}}
+
+        def reviews(self, pid, page=1):
+            return {"data": [
+                {"id": 1, "attributes": {"comment": "ok", "project": {"id": 10, "name": "Публичный"}}},
+                {"id": 2, "attributes": {"comment": "ok", "project": {"id": 20, "name": "Личный"}}},
+            ], "links": {}}
+
+        def portfolio(self, pid, page=1):
+            return {"data": []}
+
+        def project(self, pid):
+            if pid == 20:
+                raise FreelancehuntError(404, "Not Found")
+            return {"data": {"links": {"self": {"web": f"https://freelancehunt.com/project/x/{pid}.html"}}}}
+
+    st = State(str(tmp_path / "s.json"))
+    cs = asyncio.run(Service(C(), st).cases())
+    assert [(c.public, c.url) for c in cs] == [(True, "https://freelancehunt.com/project/x/10.html"), (False, "")]
+    assert st["public_projects"] == {"10": "https://freelancehunt.com/project/x/10.html", "20": None}
