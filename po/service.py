@@ -10,6 +10,7 @@ from freelancehunt.client import FreelancehuntClient, FreelancehuntError
 from .catalog import Case, parse_portfolio, parse_reviews
 from .projects import Project, parse_project, passes
 from .ranks import fmt, positions
+from .text import clip, strip_html
 from .state import State
 
 log = logging.getLogger(__name__)
@@ -90,8 +91,9 @@ class Service:
             return self._cases
 
     async def _mark_public(self, reviews: list[Case]) -> None:
-        """Личные проекты API не отдаёт (404): их нельзя приложить как «Пример проекта» и дать ссылку."""
-        known = self.state.data.setdefault("public_projects", {})
+        """Личные проекты API не отдаёт (404): их нельзя приложить как «Пример проекта» и дать ссылку.
+        У публичных берём ссылку и описание задачи, чтобы подбирать по сути, а не по названию."""
+        known = self.state.data.setdefault("project_info", {})
         for c in reviews:
             if not c.project_id:
                 continue
@@ -99,14 +101,22 @@ class Service:
             if key not in known:
                 try:
                     data = (await self.call(self.client.project, c.project_id))["data"]
-                    known[key] = ((data.get("links") or {}).get("self") or {}).get("web") or ""
+                    attrs = data.get("attributes") or {}
+                    known[key] = {
+                        "url": ((data.get("links") or {}).get("self") or {}).get("web") or "",
+                        "desc": clip(strip_html(attrs.get("description") or attrs.get("description_html") or ""), 900),
+                    }
                 except FreelancehuntError as e:
                     if e.status != 404:
                         continue
                     known[key] = None
-            c.public = known[key] is not None
-            if c.public and known[key]:
-                c.url = known[key]
+            info = known[key]
+            c.public = info is not None
+            if info:
+                c.url = info.get("url") or c.url
+                if info.get("desc") and not c.text:
+                    c.text = info["desc"]
+                    c.__post_init__()
         self.state.save()
 
     async def profile(self, force: bool = False) -> dict:

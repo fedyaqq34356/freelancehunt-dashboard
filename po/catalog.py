@@ -133,7 +133,7 @@ def render_for_prompt(cases: list[Case]) -> str:
         if c.budget:
             parts.append(f"бюджет {c.budget}")
         if c.text:
-            parts.append("| " + clip(c.text, 220))
+            parts.append("| " + clip(c.text, 500))
         if c.review:
             parts.append(f'| отзыв: "{clip(c.review, 160)}"')
         if c.kind == "review" and c.public is False:

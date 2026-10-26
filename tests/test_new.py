@@ -241,9 +241,22 @@ def test_service_marks_private_reviews(tmp_path):
         def project(self, pid):
             if pid == 20:
                 raise FreelancehuntError(404, "Not Found")
-            return {"data": {"links": {"self": {"web": f"https://freelancehunt.com/project/x/{pid}.html"}}}}
+            return {"data": {"attributes": {"description": "<p>Бот пересылает вопросы менеджерам</p>"},
+                             "links": {"self": {"web": f"https://freelancehunt.com/project/x/{pid}.html"}}}}
 
     st = State(str(tmp_path / "s.json"))
     cs = asyncio.run(Service(C(), st).cases())
     assert [(c.public, c.url) for c in cs] == [(True, "https://freelancehunt.com/project/x/10.html"), (False, "")]
-    assert st["public_projects"] == {"10": "https://freelancehunt.com/project/x/10.html", "20": None}
+    assert cs[0].text == "Бот пересылает вопросы менеджерам" and "перес" in cs[0]._stems
+    assert st["project_info"]["20"] is None and st["project_info"]["10"]["url"].endswith("/10.html")
+
+
+def test_no_match_means_no_examples_in_bid():
+    llm = FakeLLM()
+    llm.bid = {**llm.bid, "fit": "low", "cases": [], "work_ref": "", "project_ref": ""}
+    p = parse_project(project_item())
+    d = asyncio.run(Po(llm).write_bid(p, parse_reviews(REVIEWS) + parse_portfolio(PORTFOLIO)))
+    assert d.work is None and d.example is None and d.picks == []
+    msg = ui.bid_message(p, d)
+    assert "📎" not in msg and "отзыв заказчика" not in d.text
+    assert "Лучше пусто, чем притянуто" in llm.calls[0]["instructions"]
