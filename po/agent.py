@@ -40,7 +40,7 @@ BID_RULES = """Ты По. Пишешь ставку на Freelancehunt от пе
 2. 1-3 предложения, которых НЕТ в ТЗ. Не пересказывай ТЗ: заказчик знает свою задачу, а пересказ делают почти все конкуренты (часто нейросетью). Каждое предложение добавляет одно из: риск или подводный камень, о котором заказчик не подумал; как результат будет выглядеть для него на практике (запуск двойным кликом, файл с датой в названии, кнопка в боте); решение спорного места задачи. Пример хорошего хода: «Найризикованіше тут не парсинг, а зведення дублів: один артикул у різних постачальників пишеться по-різному».
 3. На сайте к ставке прикладываются две вещи, выбери обе:
    - work_ref: «Пример работы» из портфолио ([p...]), самая точная по задаче.
-   - project_ref: «Пример проекта», выполненный проект с отзывом ([r...]), только НЕ личный (у личных в каталоге пометка), самый похожий по задаче, а не просто с хорошим отзывом. Ссылка на него добавится к ставке автоматически.
+   - project_ref: выполненный проект с отзывом ([r...]), самый похожий по задаче, а не просто с хорошим отзывом. Может быть и личным (у личных в каталоге пометка): публичный фрилансер приложит в поле «Пример проекта», а для личного ссылка на отзывы в профиле добавится к тексту автоматически.
    Похожим считается только то, что решает ту же задачу тем же механизмом (например, пересылка диалога клиент-менеджер, сведение прайсов, отчёты из 1С). Общая тема или «тоже Telegram-бот» не считается. Лучше пусто, чем притянуто.
    В тексте назови похожую систему явно и процитируй коротко отзыв по project_ref: «За схожий проєкт "Назва" замовник написав: "..."». Отзыв переводи на язык проекта. Если подходящего публичного проекта нет, project_ref пустой, опирайся на work_ref: «У прикріпленому прикладі "Назва" вже працює ...».
    Если по-настоящему похожего нет ни в работах, ни в проектах, оба поля пустые, cases пустой, и в ставке вообще не упоминай примеры и отзывы. Тогда ставка держится на понимании задачи, решении и рейтинге.
@@ -257,7 +257,9 @@ def money(n: int, currency: str) -> str:
     return f"{n:,}".replace(",", " ") + f" {cur}"
 
 
-def assemble(body: str, raw: dict, project: Project, closing: str, example: Optional[Case] = None) -> str:
+def assemble(
+    body: str, raw: dict, project: Project, closing: str, example: Optional[Case] = None, profile_url: str = ""
+) -> str:
     """Тело ставки от модели + строки срока, бюджета или этапов + концовка."""
     uk = is_ukrainian(f"{project.name} {project.description} {body}")
     if closing and closing.strip() in body:
@@ -278,8 +280,8 @@ def assemble(body: str, raw: dict, project: Project, closing: str, example: Opti
             lines.append(f"{'Бюджет'}: {money(raw['price'], cur)}")
     if raw.get("start_today"):
         lines.append("Починаю сьогодні." if uk else "Начинаю сегодня.")
-    if example and example.public and example.url:
-        body = f"{body.strip()}\n{example.url} - {'відгук замовника' if uk else 'отзыв заказчика'}"
+    if example and example.public is False and profile_url:
+        body = f"{body.strip()}\n{profile_url} - {'відгуки замовників у профілі' if uk else 'отзывы заказчиков в профиле'}"
     parts = [body.strip(), "\n".join(lines), closing.strip()]
     return "\n\n".join(p for p in parts if p)
 
@@ -298,6 +300,7 @@ class Po:
         rivals: str = "",
         rivals_summary: str = "",
         rank: str = "",
+        profile_url: str = "",
     ) -> BidDraft:
         catalog = cases[:MAX_CASES_IN_PROMPT]
         past = [c for c in catalog if repeat and c.client_id and c.client_id == project.employer_id]
@@ -336,7 +339,7 @@ class Po:
         def pick_ref(field: str, kind: str) -> Optional[Case]:
             m = REF.search(str(raw.get(field, "")))
             c = by_ref.get(m.group(0)) if m else None
-            if not c or c.kind != kind or (kind == "review" and c.public is False):
+            if not c or c.kind != kind:
                 return None
             return c
 
@@ -344,7 +347,7 @@ class Po:
         example = pick_ref("project_ref", "review")
         body = await self.humanize(raw.get("bid", ""))
         closing = humanizer.cleanup(raw.get("closing") or "")
-        text = assemble(body, raw, project, closing, example)
+        text = assemble(body, raw, project, closing, example, profile_url)
         return BidDraft(
             text=text,
             fit=raw.get("fit", "medium"),

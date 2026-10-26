@@ -196,7 +196,7 @@ def test_rank_goes_into_prompt_and_profile_shows_positions():
     assert "AI и машинное обучение: <b>3</b> / 2 665 👑" in text and "Разработка ботов: <b>17</b> / 2 689 🔥" in text
 
 
-def test_two_attachments_public_link_and_private_note():
+def test_two_attachments_public_vs_personal_review():
     from po.catalog import render_for_prompt
 
     cs = parse_reviews(REVIEWS) + parse_portfolio(PORTFOLIO)
@@ -204,15 +204,17 @@ def test_two_attachments_public_link_and_private_note():
     llm = FakeLLM()
     llm.bid = {**llm.bid, "work_ref": "[p1]", "project_ref": "r77"}
     p = parse_project(project_item())
-    d = asyncio.run(Po(llm).write_bid(p, cs))
+    prof = "https://freelancehunt.com/freelancer/me.html"
+    d = asyncio.run(Po(llm).write_bid(p, cs, profile_url=prof))
     assert d.work.ref == "p1" and d.example.ref == "r77"
-    assert "https://freelancehunt.com/project/bot/900.html - отзыв заказчика" in d.text
+    assert "http" not in d.text
     msg = ui.bid_message(p, d)
-    assert "📎 <b>Пример работы:</b>" in msg and "📎 <b>Пример проекта:</b>" in msg
+    assert "📎 <b>Пример работы:</b>" in msg and "поставь в поле «Пример проекта»" in msg
     cs[0].public = False
     assert "личный проект" in render_for_prompt(cs[:1])
-    d2 = asyncio.run(Po(llm).write_bid(p, cs))
-    assert d2.example is None and "отзыв заказчика" not in d2.text
+    d2 = asyncio.run(Po(llm).write_bid(p, cs, profile_url=prof))
+    assert d2.example.ref == "r77" and f"{prof} - отзывы заказчиков в профиле" in d2.text
+    assert "🔒 Отзыв из личного проекта" in ui.bid_message(p, d2)
 
 
 def test_latin_name_flagged_for_cyrillic_project():

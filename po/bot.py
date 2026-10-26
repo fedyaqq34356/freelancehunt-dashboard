@@ -111,6 +111,7 @@ class App:
                     rivals=competitors.render_for_prompt(rivals),
                     rivals_summary=summary,
                     rank=ranks.strong_fact(project, profile),
+                    profile_url=f"https://freelancehunt.com/freelancer/{login}.html" if login else "",
                 )
             draft.cost = sum(spent)
             self.state.save()
