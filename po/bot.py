@@ -2,6 +2,7 @@
 import asyncio
 import html
 import logging
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -11,9 +12,9 @@ from aiogram.types import CallbackQuery, LinkPreviewOptions, Message
 
 from freelancehunt.client import FreelancehuntClient, FreelancehuntError
 
-from . import competitors, ranks, ui
+from . import competitors, followup, ranks, ui
 from .agent import Po
-from .catalog import best_matches
+from .catalog import best_matches, render_for_prompt
 from .config import Settings
 from .llm import Meter, OpenAILLM
 from .matcher import Matcher
@@ -95,6 +96,11 @@ class App:
             profile = await self.service.profile()
             login = profile.get("attributes", {}).get("login", "")
             rivals = await competitors.load(project.url, login)
+            if rivals is None:
+                summary = "прочитать не удалось (сайт не отдал страницу), ставка без их учёта"
+            else:
+                summary = competitors.summary(rivals, project.bid_count) if rivals else ""
+            rivals = rivals or []
             with self.meter.measure("bids") as spent:
                 draft = await self.po.write_bid(
                     project,
@@ -103,7 +109,7 @@ class App:
                     previous=self.last_bid.get(pid) if again else None,
                     repeat=repeat,
                     rivals=competitors.render_for_prompt(rivals),
-                    rivals_summary=competitors.summary(rivals, project.bid_count) if rivals else "",
+                    rivals_summary=summary,
                     rank=ranks.strong_fact(project, profile),
                 )
             draft.cost = sum(spent)
@@ -163,7 +169,121 @@ class App:
             text = strip_html(a.get("message") or "")
             if text:
                 await self.bot.send_message(self.chat, f"🔔 {html.escape(text)}", parse_mode="HTML", link_preview_options=NO_PREVIEW)
+            pid = followup.loss_project_id(a.get("message") or "")
+            if pid:
+                asyncio.create_task(self.report_loss(pid))
         self.state.save()
+
+    async def report_loss(self, pid: int) -> None:
+        try:
+            client = self.service.client
+            project = (await self.service.call(client.project, pid))["data"]
+            winner = (project["attributes"].get("freelancer") or {})
+            if not winner.get("id"):
+                return
+            winner_profile = (await self.service.call(client.freelancer, winner["id"]))["data"]
+            me = await self.service.profile()
+            my_bid = None
+            for page in range(1, 4):
+                r = await self.service.call(client.get, "/my/bids", {"page[number]": page})
+                my_bid = next((b for b in r["data"] if b["attributes"]["project"]["id"] == pid), None)
+                if my_bid or not (r.get("links") or {}).get("next"):
+                    break
+            url = (project.get("links") or {}).get("self", {}).get("web", "")
+            rivals = (await competitors.load(url) if url else None) or []
+            wbid = next((x for x in rivals if x.login == winner.get("login")), None)
+            loss = followup.build_loss(project, winner_profile, wbid, my_bid, me["attributes"].get("rating") or 0)
+            self.state.data.setdefault("losses", []).append(loss.__dict__)
+            self.state.data["losses"] = self.state.data["losses"][-200:]
+            self.state.save()
+            await self.bot.send_message(self.chat, followup.loss_message(loss), parse_mode="HTML", link_preview_options=NO_PREVIEW)
+        except Exception:  # noqa: BLE001
+            log.exception("разбор проигрыша %s не получился", pid)
+
+    async def check_followups(self) -> None:
+        now = datetime.now(timezone.utc)
+        client = self.service.client
+        my_id = await self.service.my_id()
+        nudged = self.state.data.setdefault("nudged", [])
+        for t in (await self.service.call(client.threads))["data"]:
+            last = t["attributes"].get("last_post_at")
+            if not last or now - followup.parse_time(last) > timedelta(days=14):
+                continue
+            msgs = (await self.service.call(client.thread_messages, t["id"]))["data"]
+            stale = followup.stale_thread(t, msgs, my_id, now)
+            if not stale or stale["message_id"] in nudged:
+                continue
+            nudged.append(stale["message_id"])
+            self.state.data["nudged"] = nudged[-500:]
+            await self.bot.send_message(
+                self.chat,
+                f"⏰ <b>{html.escape(stale['client'] or 'Заказчик')}</b> видел твоё сообщение и молчит {stale['hours']} ч.\n"
+                f"<i>{html.escape(stale['subject'])}</i>",
+                parse_mode="HTML",
+                reply_markup=ui.nudge_kb(stale["thread_id"]),
+            )
+        local = datetime.now()
+        week = local.strftime("%G-%V")
+        if local.weekday() == 0 and local.hour >= 10 and self.state.get("digest_week") != week:
+            self.state["digest_week"] = week
+            stats = await self.service.bid_stats(7)
+            await self.bot.send_message(
+                self.chat, followup.weekly_digest(self.state.data.get("losses", []), stats), parse_mode="HTML"
+            )
+        month = local.strftime("%Y-%m")
+        if local.hour >= 10 and self.state.get("clients_month") != month:
+            self.state["clients_month"] = month
+            due = followup.due_for_reminder(followup.past_clients(await self.service.cases()), local.date().isoformat())
+            if due:
+                await self.bot.send_message(
+                    self.chat, "🤝 <b>Пора напомнить о себе постоянным клиентам</b>", parse_mode="HTML"
+                )
+                for c in due[:3]:
+                    await self.send_client(c)
+        self.state.save()
+
+    async def send_client(self, c) -> None:
+        await self.bot.send_message(
+            self.chat, ui.client_card(c), parse_mode="HTML", reply_markup=ui.client_kb(c.id)
+        )
+
+    async def make_nudge(self, cq: CallbackQuery, thread_id: int) -> None:
+        await cq.answer("По пишет напоминание…")
+        try:
+            client = self.service.client
+            my_id = await self.service.my_id()
+            msgs = (await self.service.call(client.thread_messages, thread_id))["data"]
+            thread = next((t for t in (await self.service.call(client.threads))["data"] if t["id"] == thread_id), None)
+            subject = thread["attributes"].get("subject", "") if thread else ""
+            with self.meter.measure("nudges") as spent:
+                text = await self.po.write_nudge(subject, followup.render_dialog(msgs, my_id))
+            sent = await cq.message.reply(
+                f"<pre>{html.escape(text)}</pre>\n<i>Ответь на это сообщение (можно поправить текст), и оно уйдёт заказчику. "
+                f"Стоило {ui.usd(sum(spent))}.</i>",
+                parse_mode="HTML",
+            )
+            self.state["reply_map"][str(sent.message_id)] = thread_id
+            self.state.save()
+        except Exception as e:  # noqa: BLE001
+            log.exception("напоминание %s не получилось", thread_id)
+            await cq.message.reply(f"Не получилось: {html.escape(str(e))[:300]}", parse_mode="HTML")
+
+    async def make_ideas(self, cq: CallbackQuery, client_id: int) -> None:
+        await cq.answer("По думает…")
+        try:
+            cases = await self.service.cases()
+            c = next((x for x in followup.past_clients(cases) if x.id == client_id), None)
+            if not c:
+                await cq.message.reply("Не нашёл этого заказчика в отзывах.")
+                return
+            portfolio = [x for x in cases if x.kind == "portfolio"]
+            with self.meter.measure("ideas") as spent:
+                out = await self.po.client_ideas(followup.render_client(c), render_for_prompt(portfolio))
+            await cq.message.reply(ui.ideas_message(c, out, sum(spent)), parse_mode="HTML")
+            self.state.save()
+        except Exception as e:  # noqa: BLE001
+            log.exception("идеи для %s не получились", client_id)
+            await cq.message.reply(f"Не получилось: {html.escape(str(e))[:300]}", parse_mode="HTML")
 
     async def loop(self, interval: int, job) -> None:
         while True:
@@ -242,6 +362,24 @@ def build_router(app: App) -> Router:
         await cq.message.edit_reply_markup(reply_markup=ui.budget_kb(app.state["min_budget"]))
         await cq.answer("Сохранил")
 
+    @r.message(owner, F.text == ui.BTN_CLIENTS)
+    async def clients(m: Message):
+        top = followup.past_clients(await app.service.cases())[:6]
+        if not top:
+            await m.answer("Постоянных заказчиков в отзывах пока нет.")
+            return
+        await m.answer("🤝 Твои заказчики по числу проектов. «💡 Идеи» = что ещё им предложить и готовое сообщение.")
+        for c in top:
+            await app.send_client(c)
+
+    @r.callback_query(owner, F.data.startswith("nudge:"))
+    async def nudge(cq: CallbackQuery):
+        await app.make_nudge(cq, int(cq.data.split(":")[1]))
+
+    @r.callback_query(owner, F.data.startswith("idea:"))
+    async def idea(cq: CallbackQuery):
+        await app.make_ideas(cq, int(cq.data.split(":")[1]))
+
     @r.callback_query(owner, F.data.startswith("bid:"))
     async def bid(cq: CallbackQuery):
         await app.make_bid(cq, int(cq.data.split(":")[1]), again=False)
@@ -285,6 +423,7 @@ async def main() -> None:
     dp.include_router(build_router(app))
     asyncio.create_task(app.loop(s.poll_inbox, app.check_inbox))
     asyncio.create_task(app.loop(s.poll_projects, app.check_projects))
+    asyncio.create_task(app.loop(3600, app.check_followups))
     await dp.start_polling(bot)
 
 

@@ -14,6 +14,7 @@ BTN_PAUSE = "Пауза"
 BTN_RESUME = "Включить"
 BTN_BUDGET = "Мин. бюджет"
 BTN_PROFILE = "Профиль"
+BTN_CLIENTS = "Клиенты"
 
 BUDGETS = [0, 1000, 2000, 3000, 5000, 10000]
 FIT = {"high": "🟢 очень похоже", "medium": "🟡 частично похоже", "low": "🔴 похожего мало"}
@@ -24,6 +25,7 @@ def menu(paused: bool) -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text=BTN_PROJECTS), KeyboardButton(text=BTN_RESUME if paused else BTN_PAUSE)],
             [KeyboardButton(text=BTN_BUDGET), KeyboardButton(text=BTN_PROFILE)],
+            [KeyboardButton(text=BTN_CLIENTS)],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -169,3 +171,35 @@ def client_message(who: str, subject: str, text: Optional[str]) -> str:
     e = html.escape
     body = e(text) if text else "<i>(вложение)</i>"
     return f"✉️ <b>{e(who)}</b>\n<i>{e(subject)}</i>\n\n{body}\n\n<i>Ответь на это сообщение, чтобы написать заказчику.</i>"
+
+
+def nudge_kb(thread_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="✍️ Напоминание", callback_data=f"nudge:{thread_id}")]]
+    )
+
+
+def client_kb(client_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="💡 Идеи", callback_data=f"idea:{client_id}")]]
+    )
+
+
+def client_card(c) -> str:
+    e = html.escape
+    titles = "; ".join(clip(x.title, 40) for x in sorted(c.cases, key=lambda k: k.date, reverse=True)[:4])
+    total = f"{c.total:,}".replace(",", " ")
+    return f"<b>{e(c.name)}</b>: {len(c.cases)} проектов, около {total} грн, последний {e(c.last_date)}\n<i>{e(titles)}</i>"
+
+
+def ideas_message(c, out: dict, cost: float) -> str:
+    e = html.escape
+    lines = [f"💡 <b>{e(c.name)}</b>"]
+    for i, idea in enumerate(out.get("ideas") or [], 1):
+        lines.append(f"{i}. {e(idea)}")
+    if out.get("price_hint"):
+        lines.append(f"<i>Ориентир цены: {e(out['price_hint'])}</i>")
+    lines.append("")
+    lines.append(f"<pre>{e(out.get('message', ''))}</pre>")
+    lines.append(f"<i>Отправь заказчику на сайте. Стоило {usd(cost)}.</i>")
+    return "\n".join(lines)

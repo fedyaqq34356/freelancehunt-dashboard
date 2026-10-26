@@ -70,7 +70,19 @@ def test_competitors_load_survives_errors(monkeypatch):
         raise RuntimeError("no browser")
 
     monkeypatch.setattr(competitors, "fetch_html", boom)
-    assert asyncio.run(competitors.load("http://x")) == []
+    assert asyncio.run(competitors.load("http://x")) is None
+
+    async def challenge(url, timeout_ms=30000):
+        return "<html><title>Just a moment...</title></html>"
+
+    monkeypatch.setattr(competitors, "fetch_html", challenge)
+    assert asyncio.run(competitors.load("http://x")) is None
+
+    async def ok(url, timeout_ms=30000):
+        return PAGE
+
+    monkeypatch.setattr(competitors, "fetch_html", ok)
+    assert [r.login for r in asyncio.run(competitors.load("http://x", "me_login"))] == ["alice", "bob", "carl"]
 
 
 def test_meter_records_and_summarizes(tmp_path):

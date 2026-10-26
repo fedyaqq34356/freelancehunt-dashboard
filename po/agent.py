@@ -205,6 +205,9 @@ def review_bid(text: str, raw: Optional[dict] = None, currency: str = "UAH", pro
         issues.append(f"слишком много обещаний сделать ({', '.join(plan)}), опиши, как будет устроено решение, а не список действий")
     if GENERIC.search(text):
         issues.append("общая фраза про опыт или слово «каталог», замени конкретной готовой системой")
+    low = raw.get("price")
+    if currency.upper() in ("UAH", "") and low is not None and 0 < low < 300 and not raw.get("stages"):
+        issues.append(f"цена {low} грн подозрительно низкая, это должна быть цена за всю работу")
     if HOURLY.search(text):
         issues.append("почасовая ставка, убери её, называй только цену за работу")
     if len(text) > MAX_LEN:
@@ -348,3 +351,23 @@ class Po:
                 break
             prompt = f"{text}\n\nВ тексте остались признаки: {', '.join(tells)}. Исправь их."
         return humanizer.cleanup(text)
+
+    async def write_nudge(self, subject: str, dialog: str) -> str:
+        from .followup import NUDGE_RULES, NUDGE_SCHEMA
+
+        out = await self.llm.json(
+            instructions=NUDGE_RULES, prompt=f"Тема: {subject}\n\nПЕРЕПИСКА\n{dialog}", schema=NUDGE_SCHEMA,
+            name="nudge", effort="low", max_tokens=1500,
+        )
+        return await self.humanize(out.get("text", ""))
+
+    async def client_ideas(self, client_text: str, portfolio_text: str) -> dict:
+        from .followup import IDEAS_RULES, IDEAS_SCHEMA
+
+        out = await self.llm.json(
+            instructions=IDEAS_RULES,
+            prompt=f"{client_text}\n\nДРУГИЕ РАБОТЫ ФРИЛАНСЕРА (для идей)\n{portfolio_text}",
+            schema=IDEAS_SCHEMA, name="ideas", effort="low", max_tokens=3000,
+        )
+        out["message"] = await self.humanize(out.get("message", ""))
+        return out

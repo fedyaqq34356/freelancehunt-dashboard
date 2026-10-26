@@ -175,7 +175,7 @@ def test_review_bid_flags_plans_generic_length_and_refs():
 
 def test_po_rewrites_bid_when_critic_finds_issues():
     bad = {"fit": "high", "cases": [], "bid": "Проверю, настрою, подключу и сделаю. Есть опыт.", "price": 1, "days": 1, "note": ""}
-    good = {"fit": "high", "cases": [{"ref": "r77", "why": "x"}], "bid": "У меня уже работает бот записи.", "price": 2, "days": 2, "note": ""}
+    good = {"fit": "high", "cases": [{"ref": "r77", "why": "x"}], "bid": "У меня уже работает бот записи.", "price": 2000, "days": 2, "note": ""}
 
     class Seq(FakeLLM):
         def __init__(self):
@@ -190,7 +190,7 @@ def test_po_rewrites_bid_when_critic_finds_issues():
 
     llm = Seq()
     draft = asyncio.run(Po(llm).write_bid(parse_project(project_item()), cases()))
-    assert draft.price == 2 and [p.case.ref for p in draft.picks] == ["r77"]
+    assert draft.price == 2000 and [p.case.ref for p in draft.picks] == ["r77"]
     assert "Перепиши ставку" in llm.calls[1]["prompt"] and "слишком много обещаний" in llm.calls[1]["prompt"]
 
 
@@ -204,7 +204,7 @@ def test_cleanup_keeps_number_ranges():
 
 def test_rewrite_keeps_cases_if_model_drops_them():
     bad = {"fit": "high", "cases": [{"ref": "r77", "why": "x"}], "bid": "Имею большой опыт.", "price": 1, "days": 1, "note": ""}
-    good = {"fit": "high", "cases": [], "bid": "Бот записи уже работает.", "price": 2, "days": 2, "note": ""}
+    good = {"fit": "high", "cases": [], "bid": "Бот записи уже работает.", "price": 2000, "days": 2, "note": ""}
 
     class Seq(FakeLLM):
         def __init__(self):
@@ -217,7 +217,7 @@ def test_rewrite_keeps_cases_if_model_drops_them():
             return await super().json(**kw)
 
     draft = asyncio.run(Po(Seq()).write_bid(parse_project(project_item()), cases()))
-    assert [p.case.ref for p in draft.picks] == ["r77"] and draft.price == 2
+    assert [p.case.ref for p in draft.picks] == ["r77"] and draft.price == 2000
 
 
 def test_review_bid_flags_hourly_rate_and_self_doubt():
@@ -329,3 +329,11 @@ def test_assemble_drops_duplicated_closing():
     p = parse_project(project_item())
     t = assemble("Тело. Как бот определяет профиль?", {"price": 1700, "days": 1}, p, "Как бот определяет профиль?")
     assert t.count("Как бот определяет профиль?") == 1 and t.startswith("Тело.\n\nСрок")
+
+
+def test_review_bid_flags_absurd_low_price():
+    from po.agent import review_bid
+
+    assert any("подозрительно низкая" in i for i in review_bid("Текст.", {"price": 10}, "UAH"))
+    assert not any("низкая" in i for i in review_bid("Текст.", {"price": 700}, "UAH"))
+    assert not any("низкая" in i for i in review_bid("Текст.", {"price": 50}, "USD"))

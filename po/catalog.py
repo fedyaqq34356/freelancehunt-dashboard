@@ -18,6 +18,8 @@ class Case:
     review: str = ""
     grade: Optional[float] = None
     client_id: Optional[int] = None
+    client_name: str = ""
+    date: str = ""
     _stems: set = field(default_factory=set, repr=False)
 
     def __post_init__(self):
@@ -84,6 +86,10 @@ def parse_reviews(payload: dict) -> list[Case]:
                 review=strip_html(a.get("comment") or a.get("review") or a.get("text") or ""),
                 grade=float(grade) if isinstance(grade, (int, float)) else None,
                 client_id=(a.get("from") or {}).get("id"),
+                client_name=" ".join(
+                    x for x in ((a.get("from") or {}).get("first_name"), (a.get("from") or {}).get("last_name")) if x
+                ),
+                date=(a.get("published_at") or "")[:10],
             )
         )
     return out

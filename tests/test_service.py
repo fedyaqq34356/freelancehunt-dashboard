@@ -103,7 +103,7 @@ def test_router_builds_and_owner_check(tmp_path):
     st = State(str(tmp_path / "s.json"))
     app = App(Settings("t", "f", "o", owner_id=7), bot=None, service=None, po=None, state=st)
     r = build_router(app)
-    assert len(r.message.handlers) >= 6 and len(r.callback_query.handlers) == 3
+    assert len(r.message.handlers) >= 6 and len(r.callback_query.handlers) == 5
     assert app.is_owner(7) and not app.is_owner(8)
     app.s.owner_id = None
     assert not app.is_owner(7)

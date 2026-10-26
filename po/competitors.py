@@ -112,15 +112,28 @@ async def fetch_html(url: str, timeout_ms: int = 30000) -> str:
         browser = await p.chromium.launch(executable_path=exe, args=["--no-sandbox", "--disable-gpu"])
         try:
             page = await browser.new_page(user_agent=UA)
-            await page.goto(url, wait_until="networkidle", timeout=timeout_ms)
+            await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            try:
+                await page.wait_for_selector("article.bid", timeout=15000)
+            except Exception:  # noqa: BLE001
+                pass
             return await page.content()
         finally:
             await browser.close()
 
 
-async def load(url: str, my_login: str = "") -> list[Rival]:
+def blocked(page: str) -> bool:
+    return "<title>Just a moment" in page or "cf-chl" in page
+
+
+async def load(url: str, my_login: str = "") -> Optional[list[Rival]]:
+    """Список ставок или None, если страницу не отдали (ошибка или защита сайта)."""
     try:
-        return parse(await fetch_html(url), my_login)
+        page = await fetch_html(url)
     except Exception as e:  # noqa: BLE001
         log.warning("ставки конкурентов недоступны: %s", e)
-        return []
+        return None
+    if blocked(page):
+        log.warning("ставки конкурентов: сайт показал проверку от ботов, пропускаю")
+        return None
+    return parse(page, my_login)
