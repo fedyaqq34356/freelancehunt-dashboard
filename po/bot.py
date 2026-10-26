@@ -18,7 +18,7 @@ from .catalog import best_matches, render_for_prompt
 from .config import Settings
 from .llm import Meter, OpenAILLM
 from .matcher import Matcher
-from .projects import Project, card, parse_project
+from .projects import Project, card, parse_project, passes
 from .service import Service
 from .state import State
 from .text import strip_html
@@ -47,6 +47,7 @@ class App:
         self.meter = meter or Meter(state)
         self.last_bid: dict[int, str] = {}
         self.busy: set[int] = set()
+        self.sending: set[int] = set()
 
     @property
     def chat(self):
@@ -67,7 +68,7 @@ class App:
         matches = best_matches(p.search_text, cases, n=1)
         return (matches[0], "") if matches else (None, "")
 
-    async def send_project(self, p: Project) -> None:
+    async def build_card(self, p: Project) -> str:
         match, why, repeat = None, "", False
         try:
             cases = await self.service.cases()
@@ -75,11 +76,33 @@ class App:
             repeat = p.employer_id in await self.service.past_clients()
         except FreelancehuntError as e:
             log.warning("кейсы недоступны: %s", e)
-        self.state.save()
-        await self.bot.send_message(
-            self.chat, card(p, match, repeat, why), parse_mode="HTML", reply_markup=ui.project_kb(p),
-            link_preview_options=NO_PREVIEW,
-        )
+        return card(p, match, repeat, why)
+
+    async def send_projects(self, projects: list[Project]) -> int:
+        """Карточки только тех проектов, которые ещё не показывали; подсказки считаются параллельно."""
+        shown = set(self.state["shown_project_ids"])
+        fresh = []
+        for p in projects:
+            if p.id in shown or p.id in self.sending or any(x.id == p.id for x in fresh):
+                continue
+            fresh.append(p)
+        if not fresh:
+            return 0
+        self.sending.update(p.id for p in fresh)
+        try:
+            texts = await asyncio.gather(*(self.build_card(p) for p in fresh))
+            for p, text in zip(fresh, texts):
+                await self.bot.send_message(
+                    self.chat, text, parse_mode="HTML", reply_markup=ui.project_kb(p), link_preview_options=NO_PREVIEW
+                )
+                self.state.mark("shown_project_ids", p.id)
+            self.state.save()
+        finally:
+            self.sending.difference_update(p.id for p in fresh)
+        return len(fresh)
+
+    async def send_project(self, p: Project) -> None:
+        await self.send_projects([p])
 
     async def make_bid(self, cq: CallbackQuery, pid: int, again: bool) -> None:
         if pid in self.busy:
@@ -167,6 +190,10 @@ class App:
             if not self.state.mark("seen_feed_ids", f["id"]):
                 continue
             a = f["attributes"]
+            new_project = followup.new_project_id(a.get("message") or "", f.get("links") or {})
+            if new_project:
+                asyncio.create_task(self.project_from_feed(new_project))
+                continue
             text = strip_html(a.get("message") or "")
             if text:
                 await self.bot.send_message(self.chat, f"🔔 {html.escape(text)}", parse_mode="HTML", link_preview_options=NO_PREVIEW)
@@ -298,8 +325,17 @@ class App:
             await asyncio.sleep(interval)
 
     async def check_projects(self) -> None:
-        for p in await self.service.new_projects():
-            await self.send_project(p)
+        await self.send_projects(await self.service.new_projects())
+
+    async def project_from_feed(self, pid: int) -> None:
+        """Уведомление «добавил проект» превращается в обычную карточку с кнопками."""
+        try:
+            self.state.mark("seen_project_ids", pid)
+            p = await self.service.project(pid)
+            if not self.state["paused"] and passes(p, self.state["min_budget"]):
+                await self.send_projects([p])
+        except Exception:  # noqa: BLE001
+            log.exception("проект %s из ленты не показан", pid)
 
 
 def build_router(app: App) -> Router:
@@ -325,12 +361,15 @@ def build_router(app: App) -> Router:
     @r.message(owner, F.text == ui.BTN_PROJECTS)
     @r.message(owner, Command("projects"))
     async def projects(m: Message):
-        items = await app.service.latest_projects()
-        if not items:
-            await m.answer("Проектов пока нет.")
-            return
-        for item in items[:5][::-1]:
-            await app.send_project(parse_project(item))
+        await app.bot.send_chat_action(m.chat.id, "typing")
+        shown = set(app.state["shown_project_ids"])
+        fresh = []
+        for item in await app.service.latest_projects():
+            p = parse_project(item)
+            if p.id not in shown and passes(p, app.state["min_budget"]):
+                fresh.append(p)
+        if not await app.send_projects(fresh[:5][::-1]):
+            await m.answer("Новых проектов нет, всё уже показано.")
 
     @r.message(owner, F.text.in_({ui.BTN_PAUSE, ui.BTN_RESUME}))
     async def toggle(m: Message):

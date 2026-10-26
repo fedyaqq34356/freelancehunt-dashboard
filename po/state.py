@@ -13,10 +13,11 @@ DEFAULTS: dict[str, Any] = {
     "seen_message_ids": [],
     "seen_feed_ids": [],
     "seen_project_ids": [],
+    "shown_project_ids": [],
     "reply_map": {},
 }
 
-CAPS = {"seen_message_ids": 2000, "seen_feed_ids": 2000, "seen_project_ids": 3000}
+CAPS = {"seen_message_ids": 2000, "seen_feed_ids": 2000, "seen_project_ids": 3000, "shown_project_ids": 3000}
 
 
 class State:
@@ -25,7 +26,10 @@ class State:
         self.data: dict[str, Any] = json.loads(json.dumps(DEFAULTS))
         if self.path.exists():
             try:
-                self.data.update(json.loads(self.path.read_text()))
+                saved = json.loads(self.path.read_text())
+                if "shown_project_ids" not in saved:
+                    saved["shown_project_ids"] = list(saved.get("seen_project_ids") or [])
+                self.data.update(saved)
             except (ValueError, OSError):
                 pass
 

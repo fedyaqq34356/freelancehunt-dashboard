@@ -93,3 +93,10 @@ def test_ideas_message():
     c = followup.past_clients(make_cases())[0]
     t = ui.ideas_message(c, {"ideas": ["Мониторинг", "Поддержка"], "message": "Влад, добрый день.", "price_hint": "4000 грн/мес"}, 0.001)
     assert "1. Мониторинг" in t and "<pre>Влад, добрый день.</pre>" in t and "Стоило $0.0010" in t
+
+
+def test_new_project_id_from_feed():
+    m = 'Євгеній добавил проект <a href="https://freelancehunt.com/project/parsing/1661200.html">Парсинг</a>'
+    assert followup.new_project_id(m, {"project": "https://api.freelancehunt.com/v2/projects/1661200"}) == 1661200
+    assert followup.new_project_id(m, {}) == 1661200
+    assert followup.new_project_id("Ваш рейтинг вырос", {}) is None

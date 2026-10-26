@@ -337,3 +337,11 @@ def test_review_bid_flags_absurd_low_price():
     assert any("подозрительно низкая" in i for i in review_bid("Текст.", {"price": 10}, "UAH"))
     assert not any("низкая" in i for i in review_bid("Текст.", {"price": 700}, "UAH"))
     assert not any("низкая" in i for i in review_bid("Текст.", {"price": 50}, "USD"))
+
+
+def test_state_migrates_shown_from_seen(tmp_path):
+    import json
+
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps({"seen_project_ids": [5, 6]}))
+    assert State(str(path))["shown_project_ids"] == [5, 6]

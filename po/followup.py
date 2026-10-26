@@ -15,6 +15,18 @@ LOSS = re.compile(r"выбрал(?:а)? другого исполнителя|о
 PROJECT_ID = re.compile(r"/project/[^\"']*?/(\d+)\.html")
 
 
+NEW_PROJECT = re.compile(r"добавил(?:а)? проект|додав(?:ла)? проєкт", re.I)
+
+
+def new_project_id(message: str, links: dict) -> Optional[int]:
+    """Уведомление о новом проекте: id из ссылки API или из адреса в тексте."""
+    if not NEW_PROJECT.search(message or ""):
+        return None
+    api = (links or {}).get("project") or ""
+    m = re.search(r"/projects/(\d+)", api) or PROJECT_ID.search(message)
+    return int(m.group(1)) if m else None
+
+
 def loss_project_id(message: str) -> Optional[int]:
     if not LOSS.search(message or ""):
         return None

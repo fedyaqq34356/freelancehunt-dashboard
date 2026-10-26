@@ -126,3 +126,25 @@ def test_past_clients_from_reviews(tmp_path):
     c.reviews = lambda pid, page=1: rev
     s = Service(c, State(str(tmp_path / "s.json")))
     assert run(s.past_clients()) == {99}
+
+
+def test_send_projects_skips_shown_and_duplicates(tmp_path):
+    from po.bot import App
+    from po.config import Settings
+    from po.projects import parse_project
+    from conftest import project_item
+
+    sent = []
+
+    class Bot:
+        async def send_message(self, chat, text, **kw):
+            sent.append(text)
+
+    st = State(str(tmp_path / "s.json"))
+    st["owner_chat_id"] = 1
+    st["shown_project_ids"] = [1]
+    app = App(Settings("t", "f", "o"), Bot(), Service(FakeClient(), st), po=None, state=st)
+    ps = [parse_project(project_item(i)) for i in (1, 2, 2, 3)]
+    assert run(app.send_projects(ps)) == 2
+    assert len(sent) == 2 and st["shown_project_ids"] == [1, 2, 3]
+    assert run(app.send_projects(ps)) == 0
