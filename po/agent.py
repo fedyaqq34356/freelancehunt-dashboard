@@ -64,9 +64,9 @@ BID_RULES = """Ты По. Пишешь ставку на Freelancehunt от пе
 - Срок не длиннее самого короткого у содержательных конкурентов, если задача реально делается так быстро. Для мелких задач лучше часы (minutes).
 - rivals_note: одна-две фразы фрилансеру, что пишут конкуренты и чем его ставка отличается.
 
-Рейтинг: если дан блок СИЛЬНЫЙ ФАКТ, вставь его одной короткой фразой в начало второго или третьего предложения, на языке проекта, без хвастовства (например «У рейтингу AI на Freelancehunt я на 3-му місці з 2 665»). Больше никаких цифр профиля не перечисляй.
+Рейтинг: если дан блок СИЛЬНЫЙ ФАКТ, вставь его одной короткой фразой во второй абзац, рядом с похожим проектом, на языке проекта, без хвастовства (например «У рейтингу AI на Freelancehunt я на 3-му місці з 2 665»). Не в первые предложения: первые 150 знаков заказчик видит в превью, там должна быть его задача. Больше никаких цифр профиля не перечисляй.
 
-Скрытие: hide=true, если в ставке есть своё решение или идея, которую конкуренты могут скопировать (у фрилансера Plus, ставку можно скрыть). hide_reason: коротко почему.
+Скрытие: hide=true только если в ставке есть конкретное техническое решение, которого нет ни у одного из конкурентов, и конкурентов 10 или больше. Обычная экспертная деталь не повод. В остальных случаях hide=false. hide_reason: коротко почему.
 
 Цена и срок:
 - Цена в валюте проекта. Если бюджет указан, ставь ровно бюджет: все его выигранные ставки были ровно по бюджету, ставки ниже бюджета не выиграли ни разу. Скидку не предлагай, готовая основа значит «быстрее и надёжнее», а не «дешевле».
@@ -257,6 +257,23 @@ def money(n: int, currency: str) -> str:
     return f"{n:,}".replace(",", " ") + f" {cur}"
 
 
+RANK_SENTENCE = re.compile(r"[^.?!\n]*рейтинг[^.?!\n]*Freelancehunt[^.?!\n]*[.?!]|[^.?!\n]*Freelancehunt[^.?!\n]*рейтинг[^.?!\n]*[.?!]", re.I)
+
+
+def move_rank(body: str) -> str:
+    """Фраза про рейтинг не должна стоять в начале: превью заказчика занято его задачей."""
+    m = RANK_SENTENCE.search(body)
+    if not m or m.start() > 160:
+        return body
+    sentence = m.group(0).strip()
+    rest = (body[: m.start()] + body[m.end():]).strip()
+    rest = re.sub(r"[ \t]+\n", "\n", re.sub(r"[ \t]{2,}", " ", rest))
+    paragraphs = rest.split("\n")
+    target = len(paragraphs) - 1 if len(paragraphs) > 1 else 0
+    paragraphs[target] = f"{paragraphs[target].rstrip()} {sentence}"
+    return "\n".join(p.strip() for p in paragraphs if p.strip())
+
+
 def assemble(
     body: str, raw: dict, project: Project, closing: str, example: Optional[Case] = None, profile_url: str = ""
 ) -> str:
@@ -348,7 +365,7 @@ class Po:
 
         work = pick_ref("work_ref", "portfolio")
         example = pick_ref("project_ref", "review")
-        body = await self.humanize(raw.get("bid", ""))
+        body = move_rank(await self.humanize(raw.get("bid", "")))
         closing = humanizer.cleanup(raw.get("closing") or "")
         text = assemble(body, raw, project, closing, example, profile_url)
         return BidDraft(

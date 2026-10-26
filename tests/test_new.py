@@ -180,8 +180,8 @@ def test_strong_rank_fact_only_for_project_category_in_top20():
     from po.ranks import strong_fact
 
     ai = parse_project(project_item(skills=("AI и машинное обучение", "Разработка ботов")))
-    assert strong_fact(ai, PROFILE) == "3 место из 2 665 в рейтинге категории «AI и машинное обучение» на Freelancehunt"
-    assert strong_fact(parse_project(project_item(skills=("Разработка ботов",))), PROFILE).startswith("17 место из 2 689")
+    assert strong_fact(ai, PROFILE) == "3 место из 2 669 в рейтинге категории «AI и машинное обучение» на Freelancehunt"
+    assert strong_fact(parse_project(project_item(skills=("Разработка ботов",))), PROFILE).startswith("17 место из 2 692")
     assert strong_fact(parse_project(project_item(skills=("Веб-программирование",))), PROFILE) == ""
     assert strong_fact(parse_project(project_item(skills=("Дизайн",))), PROFILE) == ""
 
@@ -192,8 +192,8 @@ def test_rank_goes_into_prompt_and_profile_shows_positions():
     asyncio.run(Po(llm).write_bid(parse_project(project_item()), cs, rank="3 место из 2 665"))
     assert "СИЛЬНЫЙ ФАКТ\n3 место из 2 665" in llm.calls[0]["prompt"]
     text = ui.profile_message({"data": PROFILE}, 79, 31, 0, False)
-    assert "В общем рейтинге: <b>458</b> / 291 877" in text
-    assert "AI и машинное обучение: <b>3</b> / 2 665 👑" in text and "Разработка ботов: <b>17</b> / 2 689 🔥" in text
+    assert "В общем рейтинге: <b>458</b> / 292 101" in text
+    assert "AI и машинное обучение: <b>3</b> / 2 669 👑" in text and "Разработка ботов: <b>17</b> / 2 692 🔥" in text
 
 
 def test_two_attachments_public_vs_personal_review():
@@ -278,3 +278,23 @@ def test_slugify_like_site():
     assert slugify("Доопрацювати бота") == "doopratsyuvati-bota"
     assert slugify("Разработка Telegram-бота с ИИ для общения с кандидатками и отбора анкет") == "razrabotka-telegram-bota-ii-dlya-obscheniya"
     assert slugify("") == "project"
+
+
+def test_move_rank_out_of_preview():
+    from po.agent import move_rank
+
+    body = ("Дима, добрый день. В рейтинге разработки ботов на Freelancehunt я на 18-м месте из 2 689. "
+            "Важно привязать ответ к диалогу.\nВ проекте «Бот» уже работает передача вопросов.")
+    out = move_rank(body)
+    assert out.startswith("Дима, добрый день. Важно привязать ответ к диалогу.")
+    assert out.endswith("уже работает передача вопросов. В рейтинге разработки ботов на Freelancehunt я на 18-м месте из 2 689.")
+    late = "Дима, добрый день. " + "Длинная мысль про задачу заказчика. " * 6 + "У рейтингу AI на Freelancehunt я на 3-му місці."
+    assert move_rank(late) == late
+    assert move_rank("Без рейтинга.") == "Без рейтинга."
+
+
+def test_zero_position_is_not_a_fact():
+    from po.ranks import strong_fact
+
+    prof = {"attributes": {"skills": [{"id": 22, "name": "Python", "rating_position": 0}]}}
+    assert strong_fact(parse_project(project_item(skills=("Python",))), prof) == ""

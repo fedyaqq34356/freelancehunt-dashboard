@@ -17,6 +17,7 @@ class Settings:
     poll_projects: int = 90
     catalog_ttl: int = 6 * 3600
     prices: dict = field(default_factory=dict)
+    extra_skills: tuple = (99,)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -34,6 +35,7 @@ class Settings:
             state_path=os.getenv("STATE_PATH", cls.state_path),
             poll_inbox=int(os.getenv("POLL_INBOX_SECONDS", cls.poll_inbox)),
             poll_projects=int(os.getenv("POLL_PROJECTS_SECONDS", cls.poll_projects)),
+            extra_skills=tuple(int(x) for x in os.getenv("EXTRA_SKILL_IDS", "99").split(",") if x.strip()),
             prices={
                 k: float(os.environ[f"PRICE_{k.upper()}"])
                 for k in ("in", "cached", "out", "embed")

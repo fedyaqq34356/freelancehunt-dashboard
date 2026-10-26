@@ -3,8 +3,8 @@ from typing import Optional
 
 from .projects import Project
 
-TOTALS = {180: 2689, 169: 949, 175: 2665, 99: 7147}
-OVERALL_TOTAL = 291877
+TOTALS = {180: 2692, 169: 949, 175: 2669, 99: 7147, 22: 4898}
+OVERALL_TOTAL = 292101
 STRONG = 20
 SHORT = {"AI и машинное обучение": "AI", "Разработка ботов": "ботов", "Парсинг данных": "парсинга", "Веб-программирование": "веб"}
 
@@ -26,7 +26,7 @@ def strong_fact(project: Project, profile: dict, totals: Optional[dict] = None) 
     """Лучшее место в категории этого проекта, если оно в топ-20."""
     best = None
     for name, pos, total in positions(profile, totals):
-        if name in project.skills and pos <= STRONG and (best is None or pos < best[1]):
+        if name in project.skills and 0 < pos <= STRONG and (best is None or pos < best[1]):
             best = (name, pos, total)
     if not best:
         return ""

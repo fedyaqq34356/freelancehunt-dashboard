@@ -86,7 +86,7 @@ def test_profile_facts(tmp_path):
     s = Service(FakeClient(), State(str(tmp_path / "s.json")))
     facts = run(s.facts())
     assert "Завершённых проектов на Freelancehunt: 31" in facts
-    assert "«AI»: 3" in facts and "10 из 10" in facts
+    assert "10 из 10" in facts and "рейтинг" not in facts.lower()
     assert profile_facts({}) == ""
     assert run(s.my_id()) == 42
 
@@ -148,3 +148,9 @@ def test_send_projects_skips_shown_and_duplicates(tmp_path):
     assert run(app.send_projects(ps)) == 2
     assert len(sent) == 2 and st["shown_project_ids"] == [1, 2, 3]
     assert run(app.send_projects(ps)) == 0
+
+
+def test_extra_skills_added_to_feed_filter(tmp_path):
+    c = FakeClient()
+    run(Service(c, State(str(tmp_path / "s.json")), extra_skills=(99, 180)).latest_projects())
+    assert c.project_calls == [{"skill_id": "180,175,99"}]

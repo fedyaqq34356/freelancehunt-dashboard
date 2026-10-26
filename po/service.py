@@ -9,7 +9,6 @@ from freelancehunt.client import FreelancehuntClient, FreelancehuntError
 
 from .catalog import Case, parse_portfolio, parse_reviews
 from .projects import Project, parse_project, passes
-from .ranks import fmt, positions
 from .text import clip, slugify, strip_html
 from .state import State
 
@@ -44,19 +43,18 @@ def profile_facts(profile: dict) -> str:
         lines.append(f"Отзывы: {a['positive_reviews']} положительных, {neg} отрицательных")
     if a.get("average_grade"):
         lines.append(f"Средняя оценка: {a['average_grade']} из 10")
-    for name, pos, total in positions(profile):
-        lines.append(f"Место в рейтинге категории «{name}»: {pos}" + (f" из {fmt(total)}" if total else ""))
     return "\n".join(lines)
 
 
 class Service:
-    def __init__(self, client: FreelancehuntClient, state: State, catalog_ttl: int = 6 * 3600):
+    def __init__(self, client: FreelancehuntClient, state: State, catalog_ttl: int = 6 * 3600, extra_skills: tuple = ()):
         self.client = client
         self.state = state
         self.catalog_ttl = catalog_ttl
         self._cases: list[Case] = []
         self._cases_at = 0.0
         self._lock = asyncio.Lock()
+        self.extra_skills = extra_skills
         self._profile: dict = {}
         self._profile_at = 0.0
 
@@ -156,7 +154,8 @@ class Service:
 
     async def latest_projects(self) -> list[dict]:
         skills = (await self.profile()).get("attributes", {}).get("skills") or []
-        ids = ",".join(str(x["id"]) for x in skills if isinstance(x, dict) and x.get("id"))
+        own = [int(x["id"]) for x in skills if isinstance(x, dict) and x.get("id")]
+        ids = ",".join(str(i) for i in dict.fromkeys(own + [i for i in self.extra_skills if own]))
         return (await self.call(self.client.projects, 1, {"skill_id": ids} if ids else None))["data"]
 
     async def new_projects(self) -> list[Project]:

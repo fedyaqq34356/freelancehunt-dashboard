@@ -458,7 +458,7 @@ async def main() -> None:
     meter = Meter(state, s.prices)
     llm = OpenAILLM(s.openai_key, s.model, meter)
     matcher = Matcher(llm, str(Path(s.state_path).with_name("index.json")))
-    app = App(s, bot, Service(FreelancehuntClient(s.fh_token), state, s.catalog_ttl), Po(llm), state, matcher, meter)
+    app = App(s, bot, Service(FreelancehuntClient(s.fh_token), state, s.catalog_ttl, s.extra_skills), Po(llm), state, matcher, meter)
     dp = Dispatcher()
     dp.include_router(build_router(app))
     asyncio.create_task(app.loop(s.poll_inbox, app.check_inbox))
