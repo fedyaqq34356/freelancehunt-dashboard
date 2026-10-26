@@ -212,8 +212,12 @@ def test_two_attachments_public_vs_personal_review():
     assert "📎 <b>Пример работы:</b>" in msg and "поставь в поле «Пример проекта»" in msg
     cs[0].public = False
     assert "личный проект" in render_for_prompt(cs[:1])
+    cs[0].url = "https://freelancehunt.com/project/dorabotat-bota/1629552.html"
     d2 = asyncio.run(Po(llm).write_bid(p, cs, profile_url=prof))
-    assert d2.example.ref == "r77" and f"{prof} - отзывы заказчиков в профиле" in d2.text
+    assert d2.example.ref == "r77" and "https://freelancehunt.com/project/dorabotat-bota/1629552.html - отзыв заказчика" in d2.text
+    cs[0].url = ""
+    d3 = asyncio.run(Po(llm).write_bid(p, cs, profile_url=prof))
+    assert f"{prof} - отзывы заказчиков в профиле" in d3.text
     assert "🔒 Отзыв из личного проекта" in ui.bid_message(p, d2)
 
 
@@ -248,7 +252,10 @@ def test_service_marks_private_reviews(tmp_path):
 
     st = State(str(tmp_path / "s.json"))
     cs = asyncio.run(Service(C(), st).cases())
-    assert [(c.public, c.url) for c in cs] == [(True, "https://freelancehunt.com/project/x/10.html"), (False, "")]
+    assert [(c.public, c.url) for c in cs] == [
+        (True, "https://freelancehunt.com/project/x/10.html"),
+        (False, "https://freelancehunt.com/project/lichnyiy/20.html"),
+    ]
     assert cs[0].text == "Бот пересылает вопросы менеджерам" and "перес" in cs[0]._stems
     assert st["project_info"]["20"] is None and st["project_info"]["10"]["url"].endswith("/10.html")
 
@@ -262,3 +269,12 @@ def test_no_match_means_no_examples_in_bid():
     msg = ui.bid_message(p, d)
     assert "📎" not in msg and "отзыв заказчика" not in d.text
     assert "Лучше пусто, чем притянуто" in llm.calls[0]["instructions"]
+
+
+def test_slugify_like_site():
+    from po.text import slugify
+
+    assert slugify("Доработать бота") == "dorabotat-bota"
+    assert slugify("Доопрацювати бота") == "doopratsyuvati-bota"
+    assert slugify("Разработка Telegram-бота с ИИ для общения с кандидатками и отбора анкет") == "razrabotka-telegram-bota-ii-dlya-obscheniya"
+    assert slugify("") == "project"

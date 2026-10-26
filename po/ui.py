@@ -95,7 +95,7 @@ def bid_message(p: Project, d: BidDraft) -> str:
         if d.work:
             lines.append(f"📎 <b>Пример работы:</b> «{link(d.work)}»")
         if d.example and d.example.public is False:
-            lines.append(f"🔒 Отзыв из личного проекта «{e(clip(d.example.title, 70))}»: приложить нельзя, в тексте ссылка на отзывы в профиле")
+            lines.append(f"🔒 Отзыв из личного проекта «{link(d.example)}»: приложить нельзя, ссылка на отзыв уже в тексте")
         elif d.example:
             lines.append(f"📎 <b>Пример проекта:</b> «{link(d.example)}» (поставь в поле «Пример проекта»)")
     elif d.picks:

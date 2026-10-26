@@ -41,3 +41,17 @@ def stems(s: str) -> set[str]:
             continue
         out.add(w[:5])
     return out
+
+
+_TRANSLIT = dict(zip(
+    "абвгґдеєёжзиіїйклмнопрстуфхцчшщъыьэюя",
+    ["a", "b", "v", "g", "g", "d", "e", "e", "e", "zh", "z", "i", "i", "i", "y", "k", "l", "m", "n", "o", "p", "r",
+     "s", "t", "u", "f", "h", "ts", "ch", "sh", "sch", "", "yi", "", "e", "yu", "ya"],
+))
+
+
+def slugify(title: str, words: int = 6) -> str:
+    """Латиница для адреса страницы: сайт открывает проект по номеру, эта часть только для читаемости."""
+    t = "".join(_TRANSLIT.get(ch, ch) for ch in (title or "").lower())
+    parts = [w for w in re.split(r"[^a-z0-9]+", t) if len(w) > 1]
+    return "-".join(parts[:words]) or "project"

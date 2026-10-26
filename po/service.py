@@ -10,7 +10,7 @@ from freelancehunt.client import FreelancehuntClient, FreelancehuntError
 from .catalog import Case, parse_portfolio, parse_reviews
 from .projects import Project, parse_project, passes
 from .ranks import fmt, positions
-from .text import clip, strip_html
+from .text import clip, slugify, strip_html
 from .state import State
 
 log = logging.getLogger(__name__)
@@ -112,6 +112,8 @@ class Service:
                     known[key] = None
             info = known[key]
             c.public = info is not None
+            if info is None:
+                c.url = f"https://freelancehunt.com/project/{slugify(c.title)}/{c.project_id}.html"
             if info:
                 c.url = info.get("url") or c.url
                 if info.get("desc") and not c.text:

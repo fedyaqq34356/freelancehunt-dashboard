@@ -137,6 +137,6 @@ def render_for_prompt(cases: list[Case]) -> str:
         if c.review:
             parts.append(f'| отзыв: "{clip(c.review, 160)}"')
         if c.kind == "review" and c.public is False:
-            parts.append("| личный проект: в «Пример проекта» не приложить, ссылку не давать")
+            parts.append("| личный проект: в «Пример проекта» не приложить, ссылка на отзыв добавится в текст")
         lines.append(" ".join(parts))
     return "\n".join(lines)
