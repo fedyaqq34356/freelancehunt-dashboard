@@ -273,3 +273,15 @@ def test_review_client_id_parsed():
 def test_profile_message_with_stats():
     text = ui.profile_message({"data": {"attributes": {"first_name": "Г"}}}, 79, 31, 0, False, {"days": 30, "total": 20, "won": 3})
     assert "Ставки за 30 дней: 20, выиграно 3 (15%)" in text and "🔥" in text
+
+
+def test_matcher_ignores_review_praise_and_keeps_1c():
+    from po.catalog import Case
+
+    cs = [
+        Case("r1", "review", "Парсер для розетки", text="", review="Рекомендую, можна працювати, все супер"),
+        Case("p1", "portfolio", "PIM-система", text="Каталог товаров, загрузка из 1С, аналитика цен"),
+        Case("p2", "portfolio", "Лендинг", text="Сайт для школы"),
+    ]
+    top = best_matches("AI-агенти для аналітики звітів 1С, рекомендую можна працювати", cs, n=1, min_score=0.1)
+    assert top[0].ref == "p1"

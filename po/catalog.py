@@ -21,7 +21,7 @@ class Case:
     _stems: set = field(default_factory=set, repr=False)
 
     def __post_init__(self):
-        self._stems = stems(f"{self.title} {self.title} {self.skill} {self.text} {self.review}")
+        self._stems = stems(f"{self.title} {self.skill} {self.text}")
 
 
 def _web_link(item: dict) -> str:
@@ -89,17 +89,28 @@ def parse_reviews(payload: dict) -> list[Case]:
     return out
 
 
-def score(query: set[str], case: Case) -> float:
+def idf(cases: list[Case]) -> dict[str, float]:
+    df: dict[str, int] = {}
+    for c in cases:
+        for st in c._stems:
+            df[st] = df.get(st, 0) + 1
+    n = len(cases) or 1
+    return {st: math.log((n + 1) / (k + 0.5)) for st, k in df.items()}
+
+
+def score(query: set[str], case: Case, weights: Optional[dict[str, float]] = None) -> float:
     if not query or not case._stems:
         return 0.0
-    hit = len(query & case._stems)
-    bonus = 1.15 if case.kind == "review" and case.review else 1.0
+    w = weights or {}
+    hit = sum(w.get(st, 1.0) for st in query & case._stems)
+    bonus = 1.1 if case.kind == "review" else 1.0
     return hit / math.sqrt(len(case._stems)) * bonus
 
 
-def best_matches(query_text: str, cases: list[Case], n: int = 3, min_score: float = 0.25) -> list[Case]:
+def best_matches(query_text: str, cases: list[Case], n: int = 3, min_score: float = 0.9) -> list[Case]:
     q = stems(query_text)
-    ranked = sorted(((score(q, c), c) for c in cases), key=lambda t: t[0], reverse=True)
+    w = idf(cases)
+    ranked = sorted(((score(q, c, w), c) for c in cases), key=lambda t: t[0], reverse=True)
     return [c for s, c in ranked[:n] if s >= min_score]
 
 
