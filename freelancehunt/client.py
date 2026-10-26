@@ -69,8 +69,8 @@ class FreelancehuntClient:
     def employer(self, profile_id: int) -> dict[str, Any]:
         return self.get(f"/employers/{profile_id}")
 
-    def portfolio(self, profile_id: int) -> dict[str, Any]:
-        return self.get(f"/freelancers/{profile_id}/portfolio")
+    def portfolio(self, profile_id: int, page: int = 1) -> dict[str, Any]:
+        return self.get(f"/freelancers/{profile_id}/portfolio", params={"page[number]": page})
 
     def reviews(self, profile_id: int, page: int = 1) -> dict[str, Any]:
         return self.get(f"/freelancers/{profile_id}/reviews", params={"page[number]": page})

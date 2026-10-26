@@ -1,7 +1,9 @@
+bot_state.json
+data/
 .env
-__pycache__/
+income_extras.json
 *.pyc
+__pycache__/
+.pytest_cache/
 .venv/
 venv/
-bot_state.json
-income_extras.json

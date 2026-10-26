@@ -1,0 +1,15 @@
+[Unit]
+Description=Po Freelancehunt Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pofh
+WorkingDirectory=/opt/po-fh/app
+EnvironmentFile=/opt/po-fh/.env
+ExecStart=/opt/po-fh/venv/bin/python -m po.bot
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,120 @@
+"""Работа с Freelancehunt: кеш кейсов, лента проектов, входящие."""
+import asyncio
+import logging
+import time
+from typing import Any, Callable
+
+from freelancehunt.client import FreelancehuntClient
+
+from .catalog import Case, parse_portfolio, parse_reviews
+from .projects import Project, parse_project, passes
+from .state import State
+
+log = logging.getLogger(__name__)
+
+MAX_PAGES = 10
+
+
+def select_new(items: list[dict], state: State) -> list[Project]:
+    """Новые проекты из выдачи, от старых к новым, с учётом паузы и мин. бюджета."""
+    fresh = []
+    for item in items:
+        try:
+            p = parse_project(item)
+        except (KeyError, ValueError, TypeError):
+            continue
+        if not state.mark("seen_project_ids", p.id):
+            continue
+        if state["paused"] or not passes(p, state["min_budget"]):
+            continue
+        fresh.append(p)
+    return list(reversed(fresh))
+
+
+def profile_facts(profile: dict) -> str:
+    a = profile.get("attributes") or {}
+    lines = []
+    if a.get("completed_projects"):
+        lines.append(f"Завершённых проектов на Freelancehunt: {a['completed_projects']}")
+    if a.get("positive_reviews"):
+        neg = a.get("negative_reviews") or 0
+        lines.append(f"Отзывы: {a['positive_reviews']} положительных, {neg} отрицательных")
+    if a.get("average_grade"):
+        lines.append(f"Средняя оценка: {a['average_grade']} из 10")
+    for sk in a.get("skills") or []:
+        if isinstance(sk, dict) and sk.get("rating_position"):
+            lines.append(f"Место в рейтинге категории «{sk.get('name')}»: {sk['rating_position']}")
+    return "\n".join(lines)
+
+
+class Service:
+    def __init__(self, client: FreelancehuntClient, state: State, catalog_ttl: int = 6 * 3600):
+        self.client = client
+        self.state = state
+        self.catalog_ttl = catalog_ttl
+        self._cases: list[Case] = []
+        self._cases_at = 0.0
+        self._lock = asyncio.Lock()
+        self._profile: dict = {}
+        self._profile_at = 0.0
+
+    async def call(self, fn: Callable[..., Any], *args, **kwargs) -> Any:
+        return await asyncio.to_thread(fn, *args, **kwargs)
+
+    async def my_id(self) -> int:
+        if not self.state["my_id"]:
+            await self.profile(force=True)
+        return self.state["my_id"]
+
+    async def _all_pages(self, fn: Callable[..., dict], *args) -> list[dict]:
+        items: list[dict] = []
+        for page in range(1, MAX_PAGES + 1):
+            payload = await self.call(fn, *args, page=page)
+            items.extend(payload.get("data") or [])
+            if not (payload.get("links") or {}).get("next"):
+                break
+        return items
+
+    async def cases(self, force: bool = False) -> list[Case]:
+        async with self._lock:
+            if self._cases and not force and time.time() - self._cases_at < self.catalog_ttl:
+                return self._cases
+            me = await self.my_id()
+            reviews = parse_reviews({"data": await self._all_pages(self.client.reviews, me)})
+            portfolio = parse_portfolio({"data": await self._all_pages(self.client.portfolio, me)})
+            self._cases = reviews + portfolio
+            self._cases_at = time.time()
+            log.info("кейсы обновлены: %d отзывов, %d работ", len(reviews), len(portfolio))
+            return self._cases
+
+    async def profile(self, force: bool = False) -> dict:
+        if force or not self._profile or time.time() - self._profile_at > self.catalog_ttl:
+            self._profile = (await self.call(self.client.my_profile))["data"]
+            self._profile_at = time.time()
+            if not self.state["my_id"]:
+                self.state["my_id"] = self._profile["id"]
+                self.state.save()
+        return self._profile
+
+    async def facts(self) -> str:
+        return profile_facts(await self.profile())
+
+    async def latest_projects(self) -> list[dict]:
+        skills = (await self.profile()).get("attributes", {}).get("skills") or []
+        ids = ",".join(str(x["id"]) for x in skills if isinstance(x, dict) and x.get("id"))
+        return (await self.call(self.client.projects, 1, {"skill_id": ids} if ids else None))["data"]
+
+    async def new_projects(self) -> list[Project]:
+        items = await self.latest_projects()
+        if not self.state["projects_initialized"]:
+            for item in items:
+                self.state.mark("seen_project_ids", int(item["id"]))
+            self.state["projects_initialized"] = True
+            self.state.save()
+            return []
+        fresh = select_new(items, self.state)
+        self.state.save()
+        return fresh
+
+    async def project(self, pid: int) -> Project:
+        return parse_project((await self.call(self.client.project, pid))["data"])

@@ -15,11 +15,12 @@ Self-hosted web dashboard + Telegram bot for managing a [Freelancehunt](https://
 - **Profile** — full profile view (contacts, verification, skills, bio).
 - Signed-cookie "remember me" auth, responsive mobile layout, dark theme.
 
-### Telegram bot (aiogram)
-- Forwards new client messages (with photos and files) to your Telegram.
-- Forwards new notifications.
-- Reply to a client by replying to the forwarded message.
-- `/projects` to browse the latest projects.
+### Telegram bot «По» (aiogram)
+- New projects in your specializations (filtered by your profile skills), each with two buttons: **Open** and **✍️ Bid**.
+- **✍️ Bid** asks the AI agent По to write a bid: it picks the closest work from your portfolio and reviewed projects, builds the bid around a system you already shipped (so it is faster and cheaper for the client), adds one expert remark and ends with an easy question. A rule-based critic and a humanizer pass remove plan-of-work filler, generic claims and AI-style writing. Tokens are spent only when you press the button.
+- Bid comes back as a reply to the project card: tap-to-copy text, price, deadline and which portfolio works to attach. **🔄 Another version** writes a different one.
+- Client messages (with photos and files) and notifications are forwarded; reply to a forwarded message to answer the client.
+- Menu: fresh projects, pause, minimum budget, profile.
 
 ## API limitations (upstream, not bugs)
 
@@ -66,7 +67,16 @@ Open `http://localhost:8000` and log in with `DASHBOARD_USER` / `DASHBOARD_PASS`
 ### Run the Telegram bot
 
 ```bash
-python bot.py
+python -m po.bot
+```
+
+Needs `TELEGRAM_BOT_TOKEN`, `FREELANCEHUNT_TOKEN` and `OPENAI_API_KEY` in `.env`. A systemd unit is in `deploy/po-fh.service`.
+
+### Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests
 ```
 
 Send `/start` to your bot once to bind it to your chat.
