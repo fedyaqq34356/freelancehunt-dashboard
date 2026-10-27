@@ -192,6 +192,7 @@ def test_strong_rank_fact_only_for_project_category_in_top20():
     ai = parse_project(project_item(skills=("AI и машинное обучение", "Разработка ботов")))
     assert strong_fact(ai, PROFILE) == "3 место из 2 669 в рейтинге категории «AI и машинное обучение» на Freelancehunt"
     assert strong_fact(parse_project(project_item(skills=("Разработка ботов",))), PROFILE).startswith("17 место из 2 692")
+    assert strong_fact(parse_project(project_item(skills=("Розробка ботів",))), PROFILE).startswith("17 место из 2 692")
     assert strong_fact(parse_project(project_item(skills=("Веб-программирование",))), PROFILE) == ""
     assert strong_fact(parse_project(project_item(skills=("Дизайн",))), PROFILE) == ""
 

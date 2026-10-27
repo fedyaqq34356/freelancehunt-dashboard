@@ -15,6 +15,7 @@ class Project:
     currency: str = ""
     bid_count: int = 0
     skills: list[str] = field(default_factory=list)
+    skill_ids: list[int] = field(default_factory=list)
     url: str = ""
     employer: str = ""
     employer_name: str = ""
@@ -49,6 +50,7 @@ def parse_project(item: dict) -> Project:
         currency=budget.get("currency") or "",
         bid_count=int(a.get("bid_count") or 0),
         skills=[s.get("name", "") for s in a.get("skills") or [] if isinstance(s, dict)],
+        skill_ids=[int(s["id"]) for s in a.get("skills") or [] if isinstance(s, dict) and str(s.get("id", "")).isdigit()],
         url=(links.get("web") if isinstance(links, dict) else "") or f"https://freelancehunt.com/project/{pid}.html",
         employer=" ".join(x for x in (emp.get("first_name"), emp.get("last_name")) if x) or emp.get("login", ""),
         employer_name=(emp.get("first_name") or "").strip(),
@@ -69,11 +71,12 @@ def passes(p: Project, min_budget: int) -> bool:
 
 
 HOT_SKILLS = ("AI и машинное обучение", "Парсинг данных")
+HOT_SKILL_IDS = (175, 169)  # названия API отдаёт то по-русски, то по-украински
 
 
 def is_hot(p: Project) -> bool:
     """До 20 ставок, заказчик с 3+ проектами, категория AI или парсинг."""
-    return p.bid_count <= 20 and p.employer_done >= 3 and any(s in HOT_SKILLS for s in p.skills)
+    return p.bid_count <= 20 and p.employer_done >= 3 and (any(s in HOT_SKILLS for s in p.skills) or any(i in HOT_SKILL_IDS for i in p.skill_ids))
 
 
 def card(p: Project, match: Optional[Case] = None, repeat: bool = False, why: str = "") -> str:

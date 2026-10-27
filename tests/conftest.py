@@ -6,6 +6,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
+SKILL_IDS = {"Разработка ботов": 180, "Розробка ботів": 180, "Парсинг данных": 169, "AI и машинное обучение": 175,
+             "Веб-программирование": 99, "Python": 22}
+
+
 def project_item(pid=101, name="Telegram-бот для записи клиентов", amount=5000, currency="UAH", desc=None, skills=("Разработка ботов",)):
     return {
         "id": pid,
@@ -15,7 +19,7 @@ def project_item(pid=101, name="Telegram-бот для записи клиент
             "description": desc or "Нужен бот для записи клиентов в салон с оплатой картой и админкой для мастера.",
             "budget": {"amount": amount, "currency": currency} if amount else None,
             "bid_count": 3,
-            "skills": [{"id": i, "name": s} for i, s in enumerate(skills)],
+            "skills": [{"id": SKILL_IDS.get(s, 1000 + i), "name": s} for i, s in enumerate(skills)],
             "employer": {"login": "client1", "first_name": "Иван", "last_name": "П."},
             "is_only_for_plus": False,
             "status": {"id": 11, "name": "Прием ставок"},
