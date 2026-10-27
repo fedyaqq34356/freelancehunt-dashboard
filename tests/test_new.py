@@ -3,6 +3,7 @@ import asyncio
 from conftest import FakeLLM, PORTFOLIO, REVIEWS, project_item
 
 from po import competitors, ui
+from po.projects import Project
 from po.agent import Po, assemble, duration, opening, restated, review_bid
 from po.catalog import parse_portfolio, parse_reviews
 from po.llm import Meter
@@ -119,7 +120,7 @@ def test_restated_detects_tz_paraphrase():
 def test_opening_after_greeting_must_not_restate_tz():
     tz = "Кладу прайси в папку, скрипт робить один ексель з артикулом, ціною в гривнях за курсом НБУ або вручну заданим курсом, найдешевший постачальник, інші постачальники в окремій колонці."
     weak = "Олександре, добрий день. Скрипт робитиме один ексель з артикулом і ціною в гривнях за курсом НБУ. Решта потім."
-    strong = "Олександре, добрий день. Найризикованіше тут зведення дублів: один артикул пишеться по-різному. Скрипт зробить один ексель з ціною за курсом НБУ."
+    strong = "Олександре, добрий день. Найризикованіше тут зведення дублів: один артикул пишеться по-різному. Схожий скрипт у мене вже зводить прайси трьох постачальників."
     assert opening(strong).startswith("Найризикованіше")
     assert any("первая фраза" in i for i in review_bid(weak, {}, "UAH", tz))
     assert not any("ТЗ" in i for i in review_bid(strong, {}, "UAH", tz))
@@ -307,3 +308,24 @@ def test_zero_position_is_not_a_fact():
 
     prof = {"attributes": {"skills": [{"id": 22, "name": "Python", "rating_position": 0}]}}
     assert strong_fact(parse_project(project_item(skills=("Python",))), prof) == ""
+
+
+def test_single_restated_sentence_and_boilerplate_are_flagged():
+    tz = "Кладу прайси в папку, скрипт робить один ексель з артикулом, ціною в гривнях за курсом НБУ або вручну заданим курсом, найдешевший постачальник, інші постачальники в окремій колонці."
+    one = "Ірино, добрий день. Схожий скрипт у мене вже працює. Долари перераховуватиму за курсом НБУ або вручну заданим курсом."
+    assert any("пересказыва" in i for i in review_bid(one, {}, "UAH", tz))
+    assert any("шаблонная фраза" in i for i in review_bid("Спосіб підключення перевірю окремо.", {}, "UAH", tz))
+    assert not any("шаблонная" in i for i in review_bid("Схожий бот у мене вже працює.", {}, "UAH", tz))
+
+
+def test_assemble_dedupes_closing_and_speaks_english():
+    p = parse_project(project_item())
+    t = assemble("Тело. Магазин на OpenCart?", {"price": 1000, "minutes": 60, "start_today": True}, p, "Могу начать сегодня.")
+    assert t.count("сегодня") == 1 and "Магазин на OpenCart?" in t
+    t = assemble("Тело. Магазин на OpenCart?", {"price": 1000, "days": 2}, p, "На какой платформе магазин?")
+    assert "OpenCart" not in t and t.endswith("На какой платформе магазин?")
+    en = Project(id=1, name="Scrape reviews", description="Need a scraper", currency="USD")
+    t = assemble("Джон, hello.", {"price": 300, "days": 4, "start_today": True}, en, "")
+    assert "Timeline: 4 days" in t and "Budget: 300 USD" in t and "Starting today." in t
+    t = assemble("Поправлю шапку. Почну сьогодні.", {"price": 1500, "minutes": 120, "start_today": True}, Project(id=2, name="Шапка", description="Поправити тему"), "")
+    assert t.count("сьогодні") == 1

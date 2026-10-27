@@ -122,7 +122,7 @@ def test_po_writes_bid_with_only_real_cases():
     assert draft.text.startswith("У меня уже работает бот записи")
     assert [c["name"] for c in llm.calls] == ["bid", "humanize"]
     assert "[r77]" in llm.calls[0]["prompt"] and "ПРОЕКТ" in llm.calls[0]["prompt"]
-    assert "Образцы его реальных выигравших ставок" in llm.calls[0]["instructions"]
+    assert "Образцы. Факты, цены и сроки" in llm.calls[0]["instructions"]
     assert "ставь ровно бюджет" in llm.calls[0]["instructions"]
     assert "Заказчик: Иван (завершённых проектов у него: 0)" in llm.calls[0]["prompt"]
     assert "УЖЕ РАБОТАЛ" not in llm.calls[0]["prompt"]
@@ -168,7 +168,8 @@ def test_menu_toggles_pause_button():
 def test_review_bid_flags_plans_generic_length_and_refs():
     from po.agent import review_bid
 
-    assert review_bid("Иван, у меня уже работает бот записи с оплатой. Подключу календарь. 4000 грн за 4 дня, оплата картой или Monobank?") == []
+    assert review_bid("Иван, у меня уже работает бот записи с оплатой. Подключу календарь. Оплата картой или Monobank?") == []
+    assert any("цена в тексте" in i for i in review_bid("Сделаю за 4000 грн."))
     issues = review_bid("Проверю код, подключу бота, настрою сервер и сделаю. У меня есть опыт. " + "x" * 700 + " [r12]")
     assert len(issues) == 4
 
@@ -228,7 +229,7 @@ def test_review_bid_flags_hourly_rate_and_self_doubt():
     assert review_bid("У меня есть отдельные работы по ботам.")
     assert review_bid("Моя ставка 10 USD/час.") and review_bid("Работаю за 400 грн в час.")
     assert review_bid("У меня есть завершённая доработка сайта.")
-    assert not review_bid("За 5 000 грн и 2 дня. Срок 3 часа на созвон?")
+    assert not any("почасовая" in i for i in review_bid("За 5 000 грн и 2 дня. Срок 3 часа на созвон?"))
 
 
 def test_hot_and_repeat_marks():
