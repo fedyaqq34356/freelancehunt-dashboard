@@ -330,3 +330,9 @@ def test_assemble_dedupes_closing_and_speaks_english():
     assert "Timeline: 4 days" in t and "Budget: 300 USD" in t and "Starting today." in t
     t = assemble("Поправлю шапку. Почну сьогодні.", {"price": 1500, "minutes": 120, "start_today": True}, Project(id=2, name="Шапка", description="Поправити тему"), "")
     assert t.count("сьогодні") == 1
+
+
+def test_low_budget_hint_is_flagged():
+    bad = "За ваш бюджет предлагаю проверить этот сценарий на тестовом переводе."
+    assert any("весь объём" in i for i in review_bid(bad, {"price": 4000}, "UAH"))
+    assert not any("весь объём" in i for i in review_bid("Статус сменится сам после оплаты.", {"price": 4000}, "UAH"))
