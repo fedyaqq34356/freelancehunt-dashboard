@@ -46,6 +46,7 @@ class App:
         self.matcher = matcher
         self.meter = meter or Meter(state)
         self.last_bid: dict[int, str] = {}
+        self.card_match: dict[int, tuple] = {}
         self.busy: set[int] = set()
         self.sending: set[int] = set()
 
@@ -73,6 +74,8 @@ class App:
         try:
             cases = await self.service.cases()
             match, why = await self.find_match(p, cases)
+            if match:
+                self.card_match[p.id] = (match, why)
             repeat = p.employer_id in await self.service.past_clients()
         except FreelancehuntError as e:
             log.warning("кейсы недоступны: %s", e)
@@ -115,6 +118,10 @@ class App:
             project = await self.service.project(pid)
             cases = await self.service.cases()
             facts = await self.service.facts()
+            hint = self.card_match.get(pid)
+            if hint is None and self.matcher:
+                match, why = await self.find_match(project, cases)
+                hint = (match, why) if match else None
             repeat = project.employer_id in await self.service.past_clients()
             profile = await self.service.profile()
             login = profile.get("attributes", {}).get("login", "")
@@ -135,6 +142,7 @@ class App:
                     rivals_summary=summary,
                     rank=ranks.strong_fact(project, profile),
                     profile_url=f"https://freelancehunt.com/freelancer/{login}.html" if login else "",
+                    hint=hint,
                 )
             draft.cost = sum(spent)
             self.state.save()

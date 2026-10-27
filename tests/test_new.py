@@ -197,6 +197,15 @@ def test_strong_rank_fact_only_for_project_category_in_top20():
     assert strong_fact(parse_project(project_item(skills=("Дизайн",))), PROFILE) == ""
 
 
+def test_matcher_hint_goes_into_prompt():
+    llm = FakeLLM()
+    cs = parse_reviews(REVIEWS) + parse_portfolio(PORTFOLIO)
+    asyncio.run(Po(llm).write_bid(parse_project(project_item()), cs, hint=(cs[0], "та же интеграция")))
+    assert f"ПОДСКАЗКА МАТЧЕРА: похожей считается [{cs[0].ref}] «{cs[0].title}»: та же интеграция" in llm.calls[0]["prompt"]
+    asyncio.run(Po(llm).write_bid(parse_project(project_item()), cs))
+    assert "ПОДСКАЗКА МАТЧЕРА" not in llm.calls[-1]["prompt"]
+
+
 def test_rank_goes_into_prompt_and_profile_shows_positions():
     llm = FakeLLM()
     cs = parse_reviews(REVIEWS)
