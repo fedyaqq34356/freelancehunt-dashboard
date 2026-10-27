@@ -82,7 +82,7 @@ BID_RULES = """Ты По. Пишешь ставку на Freelancehunt от пе
 - Обещания проверить работу других людей, подробности логирования, конфигов и внутренней архитектуры, если заказчик о них не спрашивал.
 
 Правила:
-- Длина поля bid 200-500 знаков: мелкая ясная задача 200-300, сложная интеграция до 500. Два-четыре предложения, максимум пять. Короче лучше. Язык проекта (русский, украинский или английский), обращение на «вы», спокойный деловой тон без канцелярита. Без давления («ви повинні», «єдиний правильний варіант»).
+- Длина поля bid 200-500 знаков: мелкая ясная задача 200-300, сложная интеграция до 500. Два-четыре предложения, максимум пять. Короче лучше. Язык ставки из строки ЯЗЫК СТАВКИ: он определён по основному тексту описания, не по названию проекта и не по цитатам внутри ТЗ, обращение на «вы», спокойный деловой тон без канцелярита. Без давления («ви повинні», «єдиний правильний варіант»).
 - Только факты из каталога и профиля. Готовой системе не приписывай того, чего про неё не написано. Почасовую ставку и условия заказчика не выдавай за свои.
 - Не пиши «имею большой опыт», «у меня есть опыт», «проблем с реализацией не будет»: это есть у всех. Вместо этого конкретная система или конкретная деталь решения.
 - Если похожего мало, не пиши, чего у тебя нет. Опирайся на пункт 2, срок и цену.
@@ -293,8 +293,23 @@ def review_bid(text: str, raw: Optional[dict] = None, currency: str = "UAH", pro
     return issues
 
 
+UK_WORDS = {"і", "й", "що", "це", "як", "та", "або", "якщо", "щоб", "потрібно", "треба", "мені", "ви", "від", "буде", "також", "які", "який"}
+RU_WORDS = {"и", "что", "это", "как", "или", "если", "чтобы", "нужно", "надо", "мне", "вы", "от", "будет", "также", "какие", "который"}
+# доля букв і/ї/є/ґ в украинском тексте около 6.5%, ы/э/ъ/ё в русском около 2.4%
+UK_SHARE, RU_SHARE = 0.065, 0.024
+
+
 def is_ukrainian(text: str) -> bool:
-    return len(re.findall(r"[іїєґ]", text.lower())) >= 3
+    """Украинский ли текст по большей части: частота характерных букв с поправкой на норму плюс служебные слова."""
+    low = text.lower()
+    letters = len(re.findall(r"[а-яёіїєґ]", low)) or 1
+    uk = len(re.findall(r"[іїєґ]", low)) / letters / UK_SHARE
+    ru = len(re.findall(r"[ыэъё]", low)) / letters / RU_SHARE
+    words = re.findall(r"[а-яёіїєґ']+", low)
+    if words:
+        uk += 2 * sum(w in UK_WORDS for w in words) / len(words)
+        ru += 2 * sum(w in RU_WORDS for w in words) / len(words)
+    return uk > ru
 
 
 def _plural(n: int, one: str, few: str, many: str) -> str:
@@ -346,7 +361,13 @@ LABELS = {
     "en": {"term": "Timeline", "budget": "Budget", "stage": "Stage", "total": "Total", "today": "Starting today.",
            "review": "client review", "reviews": "client reviews in my profile"},
 }
+LANG_NAMES = {"uk": "украинский", "ru": "русский", "en": "английский"}
 TODAY = re.compile(r"(сегодня|сьогодні|\btoday\b)", re.I)
+
+
+def project_language(p: Project) -> str:
+    """Язык ставки по описанию, а не по названию: название бывает украинским при русском ТЗ и наоборот."""
+    return language(p.description if len(p.description) >= 80 else f"{p.name} {p.description}")
 
 
 def language(text: str) -> str:
@@ -380,7 +401,7 @@ def assemble(
     body: str, raw: dict, project: Project, closing: str, example: Optional[Case] = None, profile_url: str = ""
 ) -> str:
     """Тело ставки от модели + строки срока, бюджета или этапов + концовка."""
-    lang = language(f"{project.name} {project.description}" if project.description else f"{project.name} {body}")
+    lang = project_language(project) if project.description else language(f"{project.name} {body}")
     t = LABELS[lang]
     closing = closing.strip()
     if closing and closing in body:
@@ -432,6 +453,8 @@ class Po:
         catalog = cases[:MAX_CASES_IN_PROMPT]
         past = [c for c in catalog if repeat and c.client_id and c.client_id == project.employer_id]
         prompt = f"ПРОЕКТ\n{render_project(project)}"
+        if project.description:
+            prompt += f"\n\nЯЗЫК СТАВКИ: {LANG_NAMES[project_language(project)]} (по основному тексту описания)"
         if repeat:
             prompt += "\nЭТОТ ЗАКАЗЧИК УЖЕ РАБОТАЛ С ФРИЛАНСЕРОМ. Прошлые проекты с ним: " + (
                 "; ".join(c.title for c in past) or "есть"

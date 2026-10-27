@@ -336,3 +336,14 @@ def test_low_budget_hint_is_flagged():
     bad = "За ваш бюджет предлагаю проверить этот сценарий на тестовом переводе."
     assert any("весь объём" in i for i in review_bid(bad, {"price": 4000}, "UAH"))
     assert not any("весь объём" in i for i in review_bid("Статус сменится сам после оплаты.", {"price": 4000}, "UAH"))
+
+
+def test_language_follows_description_majority():
+    from po.agent import project_language
+    ru_desc = ("Для товаров со статусом «Нет в наличии» необходимо реализовать кнопку «Повідомити про наявність». "
+               "При нажатии открывается форма, клиент заполняет имя и телефон, заявка сохраняется в базе сайта и передаётся в 1С.")
+    uk_desc = "Потрібно розробити веб сайт для продажу таунхаусів та будинків. Від розробки ТЗ до запуску, дизайну немає."
+    assert project_language(Project(id=1, name="Логика предзаказ", description=ru_desc)) == "ru"
+    assert project_language(Project(id=2, name="Сайт для продажу будинків", description=ru_desc)) == "ru"
+    assert project_language(Project(id=3, name="Сайт для продажи домов", description=uk_desc)) == "uk"
+    assert project_language(Project(id=4, name="Scraper", description="Need a Python script that exports reviews to CSV for 500 products.")) == "en"
