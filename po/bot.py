@@ -180,20 +180,28 @@ class App:
             for t in threads:
                 for m in (await self.service.call(client.thread_messages, t["id"]))["data"]:
                     self.state.mark("seen_message_ids", m["id"])
+                self.state.data.setdefault("thread_posts", {})[str(t["id"])] = t["attributes"].get("last_post_at")
             for f in (await self.service.call(client.feed))["data"]:
                 self.state.mark("seen_feed_ids", f["id"])
             self.state["initialized"] = True
             self.state.save()
             return
+        # Не по is_unread: если чат открыт на сайте, сайт сразу помечает ответ прочитанным.
+        posts = self.state.data.setdefault("thread_posts", {})
+        now = datetime.now(timezone.utc)
         for t in threads:
-            if not t["attributes"].get("is_unread"):
+            last = t["attributes"].get("last_post_at")
+            if not last or posts.get(str(t["id"])) == last:
                 continue
             for m in (await self.service.call(client.thread_messages, t["id"]))["data"]:
                 if not self.state.mark("seen_message_ids", m["id"]):
                     continue
-                frm = (m["attributes"].get("participants") or {}).get("from") or {}
-                if frm.get("id") != my_id:
-                    await self.forward_client_message(t["id"], t["attributes"].get("subject", ""), m)
+                a = m["attributes"]
+                frm = (a.get("participants") or {}).get("from") or {}
+                fresh = not a.get("posted_at") or now - followup.parse_time(a["posted_at"]) < timedelta(days=2)
+                if frm.get("id") != my_id and fresh:
+                    await self.forward_client_message(t["id"], t["attributes"].get("subject") or "", m)
+            posts[str(t["id"])] = last
         for f in (await self.service.call(client.feed))["data"]:
             if not self.state.mark("seen_feed_ids", f["id"]):
                 continue
