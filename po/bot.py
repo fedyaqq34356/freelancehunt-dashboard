@@ -25,6 +25,7 @@ from .text import strip_html
 
 log = logging.getLogger("po")
 NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
+UNANSWERED_MINUTES = 25
 
 
 class App:
@@ -193,7 +194,8 @@ class App:
             last = t["attributes"].get("last_post_at")
             if not last or posts.get(str(t["id"])) == last:
                 continue
-            for m in (await self.service.call(client.thread_messages, t["id"]))["data"]:
+            msgs = (await self.service.call(client.thread_messages, t["id"]))["data"]
+            for m in msgs:
                 if not self.state.mark("seen_message_ids", m["id"]):
                     continue
                 a = m["attributes"]
@@ -201,7 +203,9 @@ class App:
                 fresh = not a.get("posted_at") or now - followup.parse_time(a["posted_at"]) < timedelta(days=2)
                 if frm.get("id") != my_id and fresh:
                     await self.forward_client_message(t["id"], t["attributes"].get("subject") or "", m)
+            self.track_unanswered(t, msgs, my_id)
             posts[str(t["id"])] = last
+        await self.remind_unanswered(now)
         for f in (await self.service.call(client.feed))["data"]:
             if not self.state.mark("seen_feed_ids", f["id"]):
                 continue
@@ -217,6 +221,37 @@ class App:
             if pid:
                 asyncio.create_task(self.report_loss(pid))
         self.state.save()
+
+    def track_unanswered(self, thread: dict, msgs: list[dict], my_id: int) -> None:
+        """Запоминает диалог, где последнее живое сообщение от заказчика."""
+        pending = self.state.data.setdefault("unanswered", {})
+        last = followup.last_real_message(msgs)
+        sender = ((last or {}).get("attributes", {}).get("participants") or {}).get("from") or {}
+        if not last or sender.get("id") == my_id:
+            pending.pop(str(thread["id"]), None)
+            return
+        if (pending.get(str(thread["id"])) or {}).get("message_id") == last["id"]:
+            return
+        pending[str(thread["id"])] = {
+            "message_id": last["id"],
+            "posted_at": last["attributes"]["posted_at"],
+            "who": f"{sender.get('first_name', '')} {sender.get('last_name', '')}".strip() or "Заказчик",
+            "subject": thread["attributes"].get("subject") or "",
+            "reminded": False,
+        }
+
+    async def remind_unanswered(self, now: datetime) -> None:
+        for p in self.state.data.get("unanswered", {}).values():
+            age = now - followup.parse_time(p["posted_at"])
+            if p["reminded"] or age < timedelta(minutes=UNANSWERED_MINUTES) or age > timedelta(hours=12):
+                continue
+            p["reminded"] = True
+            await self.bot.send_message(
+                self.chat,
+                f"❗️ <b>{html.escape(p['who'])}</b> ждёт ответа {int(age.total_seconds() // 60)} мин.\n"
+                f"<i>{html.escape(p['subject'])}</i>",
+                parse_mode="HTML",
+            )
 
     async def report_loss(self, pid: int) -> None:
         try:

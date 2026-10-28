@@ -68,3 +68,28 @@ def test_read_on_site_thread_still_forwarded(tmp_path):
 
     asyncio.run(app.check_inbox())
     assert len(bot.sent) == 1
+
+
+def test_unanswered_reminder(tmp_path):
+    now = datetime.now(timezone.utc)
+    t0 = now - timedelta(hours=1)
+    thread = {"id": 7, "attributes": {"subject": "S", "last_post_at": t0.isoformat()}}
+    messages = {7: [msg(1, 2, t0)]}
+    state = State(str(tmp_path / "s.json"))
+    state["owner_chat_id"], state["initialized"] = 5, True
+    bot = FakeBot()
+    app = App.__new__(App)
+    app.bot, app.state, app.service = bot, state, FakeService(FakeClient([thread], messages))
+
+    t1 = now - timedelta(minutes=30)
+    messages[7] = [msg(2, 2, t1), msg(1, 2, t0)]
+    thread["attributes"]["last_post_at"] = t1.isoformat()
+    asyncio.run(app.check_inbox())
+    assert len(bot.sent) == 3 and "ждёт ответа" in bot.sent[-1]
+    asyncio.run(app.check_inbox())
+    assert len(bot.sent) == 3
+
+    messages[7] = [msg(3, 1, now)] + messages[7]
+    thread["attributes"]["last_post_at"] = now.isoformat()
+    asyncio.run(app.check_inbox())
+    assert state["unanswered"] == {}

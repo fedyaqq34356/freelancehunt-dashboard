@@ -16,6 +16,7 @@ DEFAULTS: dict[str, Any] = {
     "shown_project_ids": [],
     "reply_map": {},
     "thread_posts": {},
+    "unanswered": {},
 }
 
 CAPS = {"seen_message_ids": 2000, "seen_feed_ids": 2000, "seen_project_ids": 3000, "shown_project_ids": 3000}

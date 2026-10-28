@@ -143,12 +143,16 @@ def weekly_digest(losses: list[dict], my_stats: dict, today: Optional[datetime] 
 # ---------- Напоминания ----------
 
 
+def last_real_message(messages: list[dict]) -> Optional[dict]:
+    real = [m for m in messages if ((m["attributes"].get("participants") or {}).get("from") or {}).get("id") != SYSTEM_SENDER]
+    return max(real, key=lambda m: m["attributes"]["posted_at"]) if real else None
+
+
 def stale_thread(thread: dict, messages: list[dict], my_id: int, now: datetime, min_hours: int = 24, max_days: int = 14) -> Optional[dict]:
     """Последнее живое сообщение моё, прошло больше суток, заказчик после него заходил и не ответил."""
-    real = [m for m in messages if ((m["attributes"].get("participants") or {}).get("from") or {}).get("id") != SYSTEM_SENDER]
-    if not real:
+    last = last_real_message(messages)
+    if not last:
         return None
-    last = max(real, key=lambda m: m["attributes"]["posted_at"])
     sender = ((last["attributes"].get("participants") or {}).get("from") or {}).get("id")
     if sender != my_id:
         return None
