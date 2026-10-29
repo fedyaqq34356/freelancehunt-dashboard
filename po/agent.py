@@ -584,14 +584,14 @@ class Po:
             prompt += f"\n\nСТАВКИ КОНКУРЕНТОВ ({rivals_summary})\n{rivals}"
         if previous:
             prompt += f"\n\nПРЕДЫДУЩИЙ ВАРИАНТ (не повторяй его, напиши по-другому, можно с другими кейсами):\n{previous}"
-        raw = await self.llm.json(instructions=BID_RULES, prompt=prompt, schema=BID_SCHEMA, name="bid", effort="low", max_tokens=4000)
+        raw = await self.llm.json(instructions=BID_RULES, prompt=prompt, schema=BID_SCHEMA, name="bid", effort="medium", max_tokens=4000)
         first = raw
         for _ in range(1):
             issues = review_bid(raw.get("bid", ""), raw, project.currency, f"{project.name} {project.description}", project.amount, project.name)
             if not issues:
                 break
             fix = f"{prompt}\n\nТВОЙ ЧЕРНОВИК\n{raw.get('bid', '')}\n\nПерепиши ставку. Проблемы: {'; '.join(issues)}."
-            raw = await self.llm.json(instructions=BID_RULES, prompt=fix, schema=BID_SCHEMA, name="bid", effort="low", max_tokens=4000)
+            raw = await self.llm.json(instructions=BID_RULES, prompt=fix, schema=BID_SCHEMA, name="bid", effort="medium", max_tokens=4000)
         if not raw.get("cases"):
             raw["cases"] = first.get("cases") or []
 
