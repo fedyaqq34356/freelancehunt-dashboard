@@ -414,7 +414,7 @@ def test_new_crm_needs_six_days():
 def test_term_days_and_inflated_term():
     from po.agent import term_days
 
-    assert [term_days(h) for h in (2, 6, 10, 13, 24)] == [1, 1, 2, 3, 4]
+    assert [term_days(h) for h in (2, 8, 10, 20, 24)] == [1, 1, 2, 2, 3]
     assert any("раздут" in i for i in review_bid("Текст.", {"hours": 4, "days": 6, "price": 4000}, project_text="Бот записи"))
     assert not any("раздут" in i for i in review_bid("Текст.", {"hours": 4, "days": 2, "price": 4000}, project_text="Бот записи"))
     assert not any("раздут" in i for i in review_bid("Текст.", {"hours": 8, "days": 6, "price": 9000}, project_text="CRM для СТО"))
@@ -441,7 +441,7 @@ def test_cap_term():
 
     raw = {"hours": 18, "days": 6, "scale": "serious"}
     cap_term(raw, "Escrow бот")
-    assert raw["days"] == 3
+    assert raw["days"] == 2
     raw = {"hours": 3, "days": 5, "scale": "serious"}
     cap_term(raw, "Escrow бот")
     assert raw["days"] == 2

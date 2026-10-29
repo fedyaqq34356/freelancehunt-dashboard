@@ -94,16 +94,27 @@ class App:
             return 0
         self.sending.update(p.id for p in fresh)
         try:
-            texts = await asyncio.gather(*(self.build_card(p) for p in fresh))
-            for p, text in zip(fresh, texts):
-                await self.bot.send_message(
-                    self.chat, text, parse_mode="HTML", reply_markup=ui.project_kb(p), link_preview_options=NO_PREVIEW
+            sent = []
+            for p in fresh:
+                msg = await self.bot.send_message(
+                    self.chat, card(p), parse_mode="HTML", reply_markup=ui.project_kb(p), link_preview_options=NO_PREVIEW
                 )
                 self.state.mark("shown_project_ids", p.id)
+                sent.append((p, msg))
             self.state.save()
         finally:
             self.sending.difference_update(p.id for p in fresh)
+        await asyncio.gather(*(self.fill_card(p, msg) for p, msg in sent))
         return len(fresh)
+
+    async def fill_card(self, p: Project, msg) -> None:
+        """Карточка уходит сразу, без подбора: секунды решают, кто поставит первым. Пример работы дописываем следом."""
+        try:
+            text = await self.build_card(p)
+            if text != card(p):
+                await msg.edit_text(text, parse_mode="HTML", reply_markup=ui.project_kb(p), link_preview_options=NO_PREVIEW)
+        except Exception as e:  # noqa: BLE001
+            log.warning("подсказка к карточке %s не дописалась: %s", p.id, e)
 
     async def send_project(self, p: Project) -> None:
         await self.send_projects([p])
