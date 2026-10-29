@@ -8,7 +8,7 @@ from typing import Any, Callable
 from freelancehunt.client import FreelancehuntClient, FreelancehuntError
 
 from .catalog import Case, parse_portfolio, parse_reviews
-from .projects import Project, parse_project, passes
+from .projects import Project, off_profile, parse_project, passes
 from .text import clip, slugify, strip_html
 from .state import State
 
@@ -27,7 +27,7 @@ def select_new(items: list[dict], state: State) -> list[Project]:
             continue
         if not state.mark("seen_project_ids", p.id):
             continue
-        if state["paused"] or not passes(p, state["min_budget"]):
+        if state["paused"] or not passes(p, state["min_budget"]) or off_profile(p):
             continue
         fresh.append(p)
     return list(reversed(fresh))

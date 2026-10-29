@@ -364,7 +364,7 @@ def test_language_follows_description_majority():
 def test_scale_term_checks():
     from po.agent import review_bid
 
-    serious = review_bid("Короткий текст.", {"scale": "serious", "days": 2, "price": 10000})
+    serious = review_bid("Короткий текст.", {"scale": "serious", "days": 1, "price": 10000})
     assert any("serious" in i for i in serious)
     assert not any("serious" in i for i in review_bid("Короткий текст.", {"scale": "serious", "days": 5, "price": 10000}))
     assert any("quick" in i for i in review_bid("Короткий текст.", {"scale": "quick", "days": 3, "price": 1500}))
@@ -409,3 +409,50 @@ def test_new_crm_needs_six_days():
     assert any("новая система" in i for i in review_bid("Текст.", raw, project_text="CRM для сети автосервисов"))
     assert not any("новая система" in i for i in review_bid("Текст.", raw, project_text="Чат блок в готовой црмке"))
     assert not any("новая система" in i for i in review_bid("Текст.", dict(raw, days=6), project_text="CRM для автосервиса"))
+
+
+def test_term_days_and_inflated_term():
+    from po.agent import term_days
+
+    assert [term_days(h) for h in (2, 6, 10, 13, 24)] == [1, 1, 2, 3, 4]
+    assert any("раздут" in i for i in review_bid("Текст.", {"hours": 4, "days": 6, "price": 4000}, project_text="Бот записи"))
+    assert not any("раздут" in i for i in review_bid("Текст.", {"hours": 4, "days": 2, "price": 4000}, project_text="Бот записи"))
+    assert not any("раздут" in i for i in review_bid("Текст.", {"hours": 8, "days": 6, "price": 9000}, project_text="CRM для СТО"))
+
+
+def test_off_profile_projects_skipped():
+    from po.projects import off_profile
+
+    wp = Project(id=1, name="Розробка новинного порталу на WordPress + Elementor Pro", skills=["CMS", "Веб-програмування"], skill_ids=[99, 1])
+    seo = Project(id=2, name="Технічний SEO-аудит сайту", skills=["SEO"], skill_ids=[2])
+    bot = Project(id=3, name="Бот для WordPress-магазину", skills=["Розробка ботів"], skill_ids=[180])
+    assert off_profile(wp) and off_profile(seo) and not off_profile(bot)
+    assert not off_profile(Project(id=4, name="Парсер цін", skills=["Парсинг"], skill_ids=[169]))
+
+
+def test_low_uah_price_and_human_hours():
+    assert any("ниже минимума" in i for i in review_bid("Text.", {"price": 550, "days": 3}))
+    assert any("пересчитай hours" in i for i in review_bid("Текст.", {"hours": 50, "days": 10, "price": 4000}))
+    assert not any("пересчитай hours" in i for i in review_bid("Текст.", {"hours": 8, "days": 2, "price": 4000}))
+
+
+def test_cap_term():
+    from po.agent import cap_term
+
+    raw = {"hours": 18, "days": 6, "scale": "serious"}
+    cap_term(raw, "Escrow бот")
+    assert raw["days"] == 3
+    raw = {"hours": 3, "days": 5, "scale": "serious"}
+    cap_term(raw, "Escrow бот")
+    assert raw["days"] == 2
+    raw = {"hours": 18, "days": 10, "scale": "serious"}
+    cap_term(raw, "CRM для сети автосервисов")
+    assert raw["days"] == 10
+
+
+def test_sync_days():
+    from po.agent import sync_days
+
+    assert sync_days("За 7 днів покажу результат.", 3, "uk") == "За 3 дні покажу результат."
+    assert sync_days("Сделаю за 5-7 дней.", 2, "ru") == "Сделаю за 2 дня."
+    assert sync_days("Без срока.", 2, "ru") == "Без срока."

@@ -1,4 +1,5 @@
 import html
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -68,6 +69,21 @@ def passes(p: Project, min_budget: int) -> bool:
     if p.currency.upper() not in ("UAH", "₴", ""):
         return True
     return p.amount >= min_budget
+
+
+OFF_PROFILE = re.compile(
+    r"wordpress|elementor|woocommerce|tilda|\bwix\b|joomla|drupal|webflow|\bseo\b|\bсео\b|\bsmm\b|таргет|дизайн|design|figma|"
+    r"логотип|\b3d\b|відеомонтаж|видеомонтаж|монтаж відео|копірайт|копирайт|арбітраж|арбитраж",
+    re.I,
+)
+CORE_SKILL_IDS = (180, 169, 175, 22)  # боты, парсинг, AI, Python
+
+
+def off_profile(p: Project) -> bool:
+    """CMS, SEO, дизайн и прочее не его: в названии или навыках, и ни одного профильного навыка."""
+    if any(i in CORE_SKILL_IDS for i in p.skill_ids):
+        return False
+    return bool(OFF_PROFILE.search(f"{p.name} {' '.join(p.skills)}"))
 
 
 HOT_SKILLS = ("AI и машинное обучение", "Парсинг данных")

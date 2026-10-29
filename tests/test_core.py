@@ -335,9 +335,9 @@ def test_assemble_drops_duplicated_closing():
 def test_review_bid_flags_absurd_low_price():
     from po.agent import review_bid
 
-    assert any("подозрительно низкая" in i for i in review_bid("Текст.", {"price": 10}, "UAH"))
-    assert not any("низкая" in i for i in review_bid("Текст.", {"price": 700}, "UAH"))
-    assert not any("низкая" in i for i in review_bid("Текст.", {"price": 50}, "USD"))
+    assert any("ниже минимума" in i for i in review_bid("Текст.", {"price": 10}, "UAH"))
+    assert not any("ниже минимума" in i for i in review_bid("Текст.", {"price": 700}, "UAH", budget=700))
+    assert not any("ниже минимума" in i for i in review_bid("Текст.", {"price": 50}, "USD"))
 
 
 def test_state_migrates_shown_from_seen(tmp_path):

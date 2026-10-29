@@ -90,6 +90,8 @@ def bid_message(p: Project, d: BidDraft) -> str:
     scale = SCALES.get(getattr(d, "scale", ""), "")
     if scale:
         terms.append(scale)
+    if getattr(d, "hours", 0):
+        terms.append(f"реально ~{d.hours:g} ч")
     if terms:
         lines.append(" · ".join(terms))
         lines.append("<i>Срок и цену на сайте ставь как в тексте.</i>")
