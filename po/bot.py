@@ -116,7 +116,10 @@ class App:
         await cq.answer("По пишет ставку…")
         try:
             await self.bot.send_chat_action(self.chat, "typing")
+            profile = await self.service.profile()
+            login = profile.get("attributes", {}).get("login", "")
             project = await self.service.project(pid)
+            rivals_task = asyncio.create_task(competitors.load(project.url, login))
             cases = await self.service.cases()
             facts = await self.service.facts()
             hint = self.card_match.get(pid)
@@ -124,9 +127,7 @@ class App:
                 match, why = await self.find_match(project, cases)
                 hint = (match, why) if match else None
             repeat = project.employer_id in await self.service.past_clients()
-            profile = await self.service.profile()
-            login = profile.get("attributes", {}).get("login", "")
-            rivals = await competitors.load(project.url, login)
+            rivals = await rivals_task
             if rivals is None:
                 summary = "прочитать не удалось (сайт не отдал страницу), ставка без их учёта"
             else:

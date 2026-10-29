@@ -13,8 +13,8 @@ class Settings:
     model: str = "gpt-6-luna"
     owner_id: Optional[int] = None
     state_path: str = "data/state.json"
-    poll_inbox: int = 30
-    poll_projects: int = 90
+    poll_inbox: int = 10
+    poll_projects: int = 30
     catalog_ttl: int = 6 * 3600
     prices: dict = field(default_factory=dict)
     extra_skills: tuple = (99,)

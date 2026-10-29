@@ -1,9 +1,11 @@
+import asyncio
 """Ставки конкурентов со страницы проекта: headless-браузер без входа в аккаунт, только чтение."""
 import html
 import logging
 import os
 import re
 import statistics
+import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -104,7 +106,8 @@ def summary(rivals: list[Rival], bid_count: int) -> str:
     return ", ".join(parts)
 
 
-async def fetch_html(url: str, timeout_ms: int = 30000) -> str:
+async def fetch_html(url: str, timeout_ms: int = 10000, wait_s: float = 6.0) -> str:
+    """Страница проекта браузером. Ждём ставки или проверку Cloudflare, что придёт раньше, не дольше wait_s."""
     from playwright.async_api import async_playwright
 
     exe = os.getenv("CHROMIUM_PATH") or None
@@ -113,10 +116,11 @@ async def fetch_html(url: str, timeout_ms: int = 30000) -> str:
         try:
             page = await browser.new_page(user_agent=UA)
             await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-            try:
-                await page.wait_for_selector("article.bid", timeout=15000)
-            except Exception:  # noqa: BLE001
-                pass
+            for _ in range(int(wait_s / 0.5)):
+                html = await page.content()
+                if blocked(html) or "article" in html and 'class="bid' in html:
+                    return html
+                await asyncio.sleep(0.5)
             return await page.content()
         finally:
             await browser.close()
@@ -126,14 +130,24 @@ def blocked(page: str) -> bool:
     return "<title>Just a moment" in page or "cf-chl" in page
 
 
+BLOCK_COOLDOWN = 30 * 60
+LOAD_TIMEOUT = 12
+_blocked_at = 0.0
+
+
 async def load(url: str, my_login: str = "") -> Optional[list[Rival]]:
-    """Список ставок или None, если страницу не отдали (ошибка или защита сайта)."""
+    """Список ставок или None, если страницу не отдали (ошибка, защита сайта, таймаут).
+    После проверки от ботов полчаса не пробуем: она держится долго, а каждая попытка задерживает ставку."""
+    global _blocked_at
+    if time.monotonic() - _blocked_at < BLOCK_COOLDOWN:
+        return None
     try:
-        page = await fetch_html(url)
+        page = await asyncio.wait_for(fetch_html(url), LOAD_TIMEOUT)
     except Exception as e:  # noqa: BLE001
-        log.warning("ставки конкурентов недоступны: %s", e)
+        log.warning("ставки конкурентов недоступны: %s", e or type(e).__name__)
         return None
     if blocked(page):
-        log.warning("ставки конкурентов: сайт показал проверку от ботов, пропускаю")
+        _blocked_at = time.monotonic()
+        log.warning("ставки конкурентов: сайт показал проверку от ботов, пропускаю 30 мин")
         return None
     return parse(page, my_login)

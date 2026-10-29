@@ -83,7 +83,10 @@ def test_competitors_load_survives_errors(monkeypatch):
         return PAGE
 
     monkeypatch.setattr(competitors, "fetch_html", ok)
+    monkeypatch.setattr(competitors, "_blocked_at", 0.0)
     assert [r.login for r in asyncio.run(competitors.load("http://x", "me_login"))] == ["alice", "bob", "carl"]
+    monkeypatch.setattr(competitors, "_blocked_at", competitors.time.monotonic())
+    assert asyncio.run(competitors.load("http://x", "me_login")) is None
 
 
 def test_meter_records_and_summarizes(tmp_path):
@@ -398,4 +401,11 @@ def test_round_stages_and_normal_term():
     st = [{"price": 24750, "days": 4}, {"price": 20250, "days": 3}]
     round_stages(st)
     assert [x["price"] for x in st] == [25000, 20000]
-    assert any("normal" in i for i in review_bid("Текст.", {"scale": "normal", "days": 5, "price": 4000}))
+    assert any("normal" in i for i in review_bid("Текст.", {"scale": "normal", "days": 6, "price": 4000}))
+
+
+def test_new_crm_needs_six_days():
+    raw = {"scale": "serious", "days": 4, "price": 7000}
+    assert any("новая система" in i for i in review_bid("Текст.", raw, project_text="CRM для сети автосервисов"))
+    assert not any("новая система" in i for i in review_bid("Текст.", raw, project_text="Чат блок в готовой црмке"))
+    assert not any("новая система" in i for i in review_bid("Текст.", dict(raw, days=6), project_text="CRM для автосервиса"))
