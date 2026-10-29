@@ -356,3 +356,46 @@ def test_language_follows_description_majority():
     assert project_language(Project(id=2, name="Сайт для продажу будинків", description=ru_desc)) == "ru"
     assert project_language(Project(id=3, name="Сайт для продажи домов", description=uk_desc)) == "uk"
     assert project_language(Project(id=4, name="Scraper", description="Need a Python script that exports reviews to CSV for 500 products.")) == "en"
+
+
+def test_scale_term_checks():
+    from po.agent import review_bid
+
+    serious = review_bid("Короткий текст.", {"scale": "serious", "days": 2, "price": 10000})
+    assert any("serious" in i for i in serious)
+    assert not any("serious" in i for i in review_bid("Короткий текст.", {"scale": "serious", "days": 5, "price": 10000}))
+    assert any("quick" in i for i in review_bid("Короткий текст.", {"scale": "quick", "days": 3, "price": 1500}))
+    assert any("длинно" in i for i in review_bid("а" * 400, {"scale": "quick", "minutes": 120}))
+    assert not any("длинно" in i for i in review_bid("а" * 600, {"scale": "serious", "days": 5}))
+
+
+def test_cleanup_space_after_greeting():
+    from po.humanizer import cleanup
+
+    assert cleanup("Дима, добрый день.Здесь всё просто.") == "Дима, добрый день. Здесь всё просто."
+    assert cleanup("Node.JS и ASP.NET") == "Node.JS и ASP.NET"
+
+
+def test_name_first_and_handover_boilerplate():
+    from po.agent import name_first
+
+    assert name_first("Добрый день, Артем. В BLOOM уже работает запись.") == "Артем, добрый день. В BLOOM уже работает запись."
+    assert name_first("Артем, добрый день. Текст.") == "Артем, добрый день. Текст."
+    assert any("шаблонная" in i for i in review_bid("Готово. Передам бота, исходники и инструкцию.", {}))
+    assert any("шаблонная" in i for i in review_bid("Тестування та здача входять у термін.", {}))
+    assert not any("шаблонная" in i for i in review_bid("Покажу демо на ваших записях.", {}))
+
+
+def test_assemble_drops_repeated_today_closing():
+    p = Project(id=1, name="Бот", description="Потрібен простий бот для майстерні", currency="UAH")
+    text = assemble("Денисе, добрий день. Можу взятися сьогодні.", {"minutes": 120, "price": 1500}, p, "Можу почати сьогодні.")
+    assert text.count("сьогодні") == 1
+
+
+def test_round_stages_and_normal_term():
+    from po.agent import round_stages
+
+    st = [{"price": 24750, "days": 4}, {"price": 20250, "days": 3}]
+    round_stages(st)
+    assert [x["price"] for x in st] == [25000, 20000]
+    assert any("normal" in i for i in review_bid("Текст.", {"scale": "normal", "days": 5, "price": 4000}))

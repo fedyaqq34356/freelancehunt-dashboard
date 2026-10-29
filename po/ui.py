@@ -20,6 +20,9 @@ BUDGETS = [0, 1000, 2000, 3000, 5000, 10000]
 FIT = {"high": "🟢 очень похоже", "medium": "🟡 частично похоже", "low": "🔴 похожего мало"}
 
 
+SCALES = {"quick": "⚡ мелкая задача", "normal": "🛠 обычный проект", "serious": "🎯 серьёзный заказчик"}
+
+
 def menu(paused: bool) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -84,8 +87,12 @@ def bid_message(p: Project, d: BidDraft) -> str:
         terms.append(f"⏱ {d.minutes} мин" if d.minutes < 60 else f"⏱ {round(d.minutes / 60)} ч (на сайте ставь 1 день)")
     elif d.days and not d.stages:
         terms.append(f"⏱ {d.days} дн.")
+    scale = SCALES.get(getattr(d, "scale", ""), "")
+    if scale:
+        terms.append(scale)
     if terms:
         lines.append(" · ".join(terms))
+        lines.append("<i>Срок и цену на сайте ставь как в тексте.</i>")
     def link(c) -> str:
         title = e(clip(c.title, 70))
         return f'<a href="{e(c.url)}">{title}</a>' if c.url else title

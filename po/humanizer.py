@@ -49,6 +49,7 @@ def cleanup(text: str) -> str:
     t = re.sub(r"[\U0001F300-\U0001FAFF☀-➿]️?", "", t)
     t = t.replace("!", ".")
     t = re.sub(r"\.{2,}", ".", t)
+    t = re.sub(r"([а-яёіїєґ])([.?])([А-ЯЁІЇЄҐ])", r"\1\2 \3", t)
     t = re.sub(r"[ \t]+", " ", t)
     t = re.sub(r" +([.,:;?])", r"\1", t)
     t = re.sub(r"\n{3,}", "\n\n", t)
