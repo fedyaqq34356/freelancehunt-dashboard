@@ -310,7 +310,7 @@ def test_move_rank_out_of_preview():
             "Важно привязать ответ к диалогу.\nВ проекте «Бот» уже работает передача вопросов.")
     out = move_rank(body)
     assert out.startswith("Дима, добрый день. Важно привязать ответ к диалогу.")
-    assert out.endswith("уже работает передача вопросов. В рейтинге разработки ботов на Freelancehunt я на 18-м месте из 2 689.")
+    assert out.endswith("уже работает передача вопросов.\nВ рейтинге разработки ботов на Freelancehunt я на 18-м месте из 2 689.")
     late = "Дима, добрый день. " + "Длинная мысль про задачу заказчика. " * 6 + "У рейтингу AI на Freelancehunt я на 3-му місці."
     assert move_rank(late) == late
     assert move_rank("Без рейтинга.") == "Без рейтинга."
@@ -462,3 +462,11 @@ def test_small_job_price_without_budget():
     assert any("до 3500" in i for i in review_bid("Текст.", {"hours": 2, "days": 1, "price": 5000}))
     assert not any("до 3500" in i for i in review_bid("Текст.", {"hours": 2, "days": 1, "price": 5000}, budget=5000))
     assert not any("до 3500" in i for i in review_bid("Текст.", {"hours": 2, "days": 1, "price": 2000}))
+
+
+def test_crowded_project_allows_solution_lines():
+    from po.agent import review_bid
+    body = "Денисе, добрий день. " + "Три ролі, кожен бачить тільки свій інтерфейс. " * 12
+    raw = {"scale": "normal"}
+    assert any("длинно" in i for i in review_bid(body, raw, bid_count=5))
+    assert not any("длинно" in i for i in review_bid(body, raw, bid_count=30))

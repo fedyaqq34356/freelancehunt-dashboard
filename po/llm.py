@@ -68,7 +68,8 @@ class OpenAILLM:
     def __init__(self, api_key: str, model: str, meter: Optional[Meter] = None, embed_model: str = "text-embedding-3-small"):
         from openai import AsyncOpenAI
 
-        self.client = AsyncOpenAI(api_key=api_key)
+        # по умолчанию SDK ждёт ответа до 10 минут: зависший запрос держал ставку 6-7 минут
+        self.client = AsyncOpenAI(api_key=api_key, timeout=90, max_retries=2)
         self.model = model
         self.embed_model = embed_model
         self.meter = meter or Meter()

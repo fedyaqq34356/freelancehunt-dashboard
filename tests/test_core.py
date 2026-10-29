@@ -122,7 +122,7 @@ def test_po_writes_bid_with_only_real_cases():
     assert draft.text.startswith("У меня уже работает бот записи")
     assert [c["name"] for c in llm.calls] == ["bid", "humanize"]
     assert "[r77]" in llm.calls[0]["prompt"] and "ПРОЕКТ" in llm.calls[0]["prompt"]
-    assert "Образцы. Факты, цены и сроки" in llm.calls[0]["instructions"]
+    assert "Образцы. Это его настоящие ставки" in llm.calls[0]["instructions"]
     assert "ставь ровно бюджет" in llm.calls[0]["instructions"]
     assert "Заказчик: Иван (завершённых проектов у него: 0)" in llm.calls[0]["prompt"]
     assert "УЖЕ РАБОТАЛ" not in llm.calls[0]["prompt"]
