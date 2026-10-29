@@ -456,3 +456,9 @@ def test_sync_days():
     assert sync_days("За 7 днів покажу результат.", 3, "uk") == "За 3 дні покажу результат."
     assert sync_days("Сделаю за 5-7 дней.", 2, "ru") == "Сделаю за 2 дня."
     assert sync_days("Без срока.", 2, "ru") == "Без срока."
+
+
+def test_small_job_price_without_budget():
+    assert any("до 3500" in i for i in review_bid("Текст.", {"hours": 2, "days": 1, "price": 5000}))
+    assert not any("до 3500" in i for i in review_bid("Текст.", {"hours": 2, "days": 1, "price": 5000}, budget=5000))
+    assert not any("до 3500" in i for i in review_bid("Текст.", {"hours": 2, "days": 1, "price": 2000}))
